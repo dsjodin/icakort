@@ -1,0 +1,15 @@
+# Persondata: token, databas och råa kvitton får aldrig committas
+data/
+*.db
+*.sqlite3
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.DS_Store

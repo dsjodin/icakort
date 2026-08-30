@@ -1,0 +1,271 @@
+# Kategoriregler för varunamn på ICA-kvitton.
+#
+# Matchning sker mot ett normaliserat varunamn (gemener, utan mängd- och
+# förpackningsangivelser). Första träffen vinner, så ordningen i filen är
+# prioritetsordningen: lägg entydiga kategorier före breda. Städ ligger före
+# Frukt & grönt just därför -- annars blir "DISKMEDEL CITRON" citrusfrukt.
+#
+# En regel är antingen en delsträng eller ett reguljärt uttryck
+# ({re: "..."}). En delsträng träffar när den ligger vid en ordgräns i någon
+# ände, så att svenska sammansättningar fångas åt båda hållen: "mjölk"
+# matchar "havremjölk" och "kyckling" matchar "kycklingfilé", medan "ros"
+# inte matchar "kaffe mellanrost".
+#
+# Arbetsflöde: kör `icakort categorize --unknown` för att se okategoriserade
+# varor sorterade på hur mycket de kostat dig, och lägg till regler uppifrån.
+
+fallback: Okategoriserat
+
+categories:
+  - name: Pant
+    match: ["pant"]
+
+  - name: Städ & hushåll
+    match:
+      - diskmedel
+      - disktrasa
+      - tvättmedel
+      - sköljmedel
+      - rengöring
+      - allrengöring
+      - soppåsar
+      - påsar
+      - folie
+      - plastpåse
+      - bärkasse
+      - kasse
+      - batteri
+      - glödlampa
+      - ljus
+      - servetter
+
+  - name: Hygien & apotek
+    match:
+      - tandkräm
+      - tandborste
+      - schampo
+      - balsam
+      - tvål
+      - duschtvål
+      - deodorant
+      - rakhyvel
+      - blöj
+      - bindor
+      - tampong
+      - toapapper
+      - toalettpapper
+      - hushållspapper
+      - näsdukar
+      - plåster
+      - alvedon
+      - solkräm
+      - handkräm
+
+  - name: Djur
+    match:
+      - hundmat
+      - kattmat
+      - kattsand
+      - djurfoder
+      - hundgodis
+  - name: Blommor & växter
+    match:
+      - blomma
+      - blommor
+      - buketten
+      - bukett
+      - kruk
+      - ros
+      - tulpan
+
+  - name: Frukt & grönt
+    match:
+      - banan
+      - äpple
+      - päron
+      - apelsin
+      - clementin
+      - citron
+      - lime
+      - vindruv
+      - melon
+      - kiwi
+      - mango
+      - avokado
+      - tomat
+      - gurka
+      - paprika
+      - sallad
+      - spenat
+      - morot
+      - morötter
+      - potatis
+      - lök
+      - vitlök
+      - broccoli
+      - blomkål
+      - zucchini
+      - champinjon
+      - svamp
+      - ingefära
+      - bär
+      - jordgubb
+      - blåbär
+      - hallon
+      - persilja
+      - basilika
+
+  - name: Mejeri & ägg
+    match:
+      - mjölk
+      - yoghurt
+      - youghurt
+      - filmjölk
+      - grädde
+      - creme fraiche
+      - crème fraîche
+      - {re: "(^|\\s)smör"}   # ordbörjan: "jordnötssmör" är skafferi
+      - bregott
+      - margarin
+      - kvarg
+      - kesella
+      - keso
+      - ägg
+      # Ordslut, så inte "ostbågar". Undantag för -rost: kaffe är rostat,
+      # inte en ost ("mellanrost", "mörkrost").
+      - {re: "(?<!r)ost(?!\\w)"}
+      - ostskiv
+      - mozzarella
+      - parmesan
+      - herrgård
+      - präst
+      - fetaost
+      - havredryck
+      - sojadryck
+      - oatly
+
+  - name: Kött & chark
+    match:
+      - kyckling
+      - fläsk
+      - nöt
+      - färs
+      - biff
+      - kotlett
+      - korv
+      - bacon
+      - skinka
+      - salami
+      - pastrami
+      - kalkon
+      - lamm
+      - revben
+      - leverpastej
+
+  - name: Fisk & skaldjur
+    match:
+      - lax
+      - torsk
+      - sej
+      - räk
+      - musslor
+      - tonfisk
+      - sill
+      - makrill
+      - kaviar
+      - fiskpinn
+      - skaldjur
+
+  - name: Bröd & bageri
+    match:
+      - bröd
+      - limpa
+      - baguette
+      - frukostbröd
+      - knäcke
+      - tortilla
+      - bulle
+      - kanelbull
+      - kaka
+      - tårta
+      - croissant
+      - scones
+
+  - name: Fryst
+    match:
+      - fryst
+      - frysta
+      - glass
+      - pizza
+      - pommes
+
+  - name: Skafferi
+    match:
+      - pasta
+      - spaghetti
+      - ris
+      - couscous
+      - bulgur
+      - quinoa
+      - mjöl
+      - socker
+      - salt
+      - peppar
+      - kryddor
+      - krydda
+      - olja
+      - olivolja
+      - vinäger
+      - ketchup
+      - senap
+      - majonnäs
+      - sås
+      - buljong
+      - konserv
+      - krossade
+      - bönor
+      - linser
+      - kikärt
+      - müsli
+      - flingor
+      - havregryn
+      - gröt
+      - sylt
+      - marmelad
+      - honung
+      - jordnötssmör
+      - nudlar
+      - tacos
+      - nötter
+      - mandel
+
+  - name: Dryck
+    match:
+      - kaffe
+      - {re: "(^|\\s)te(\\s|$)"}   # bara ordet "te", inte varje ord som slutar på -te
+      - juice
+      - saft
+      - läsk
+      - cola
+      - vatten
+      - mineralvatten
+      - bryggkaffe
+      - energidryck
+      - cider
+      - {re: "(^|\\s)öl(\\s|$)"}   # inte "mjöl"
+      - lättöl
+      - folköl
+
+  - name: Godis & snacks
+    match:
+      - godis
+      - choklad
+      - chips
+      - ostbågar
+      - popcorn
+      - kex
+      - lakrits
+      - tuggummi
+      - snacks
+      - nougat
+

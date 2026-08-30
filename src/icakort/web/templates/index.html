@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICA-inköp</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="page-head">
+    <h1>ICA-inköp</h1>
+    <p class="sub" id="period">Laddar…</p>
+  </header>
+
+  <div class="filters" role="group" aria-label="Filter">
+    <label>Från <input type="date" id="f-from"></label>
+    <label>Till <input type="date" id="f-to"></label>
+    <div class="presets" role="group" aria-label="Snabbval period">
+      <button type="button" data-preset="30">30 dagar</button>
+      <button type="button" data-preset="90">90 dagar</button>
+      <button type="button" data-preset="ytd">I år</button>
+      <button type="button" data-preset="all" class="is-active">Allt</button>
+    </div>
+    <label>Butik <select id="f-store"><option value="">Alla</option></select></label>
+    <label>Kategori <select id="f-category"><option value="">Alla</option></select></label>
+  </div>
+
+  <main>
+    <section class="kpis" aria-label="Nyckeltal">
+      <div class="tile"><span class="tile-label">Totalt</span><span class="tile-value" id="kpi-total">–</span></div>
+      <div class="tile"><span class="tile-label">Kvitton</span><span class="tile-value" id="kpi-receipts">–</span></div>
+      <div class="tile"><span class="tile-label">Snitt per kvitto</span><span class="tile-value" id="kpi-avg">–</span></div>
+      <div class="tile"><span class="tile-label">Kategoriserat</span><span class="tile-value" id="kpi-coverage">–</span></div>
+    </section>
+
+    <section class="card">
+      <h2>Utgifter per månad</h2>
+      <p class="sub">Summa per kalendermånad, inklusive pant och rabatter.</p>
+      <div class="viz-root" id="chart-monthly"></div>
+    </section>
+
+    <section class="card" id="card-stores" hidden>
+      <h2>Per butik</h2>
+      <div class="viz-root" id="chart-stores"></div>
+    </section>
+
+    <section class="card">
+      <h2>Kategorier</h2>
+      <p class="sub">Andel av totalen per kategori.</p>
+      <div class="viz-root" id="chart-categories"></div>
+
+      <h3>Fördelning över tid</h3>
+      <div class="viz-root" id="chart-category-months"></div>
+      <details class="table-view">
+        <summary>Visa som tabell</summary>
+        <div id="table-category-months"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Varor</h2>
+      <div class="toolbar" role="group" aria-label="Sortering">
+        <button type="button" data-order="spend" class="is-active">Störst belopp</button>
+        <button type="button" data-order="count">Oftast köpt</button>
+      </div>
+      <div id="table-items"></div>
+    </section>
+
+    <section class="card" id="card-price" hidden>
+      <h2 id="price-title">Prisutveckling</h2>
+      <p class="sub">Styckpris per köptillfälle.</p>
+      <div class="viz-root" id="chart-price"></div>
+    </section>
+
+    <section class="card">
+      <h2>Datakvalitet</h2>
+      <div id="quality"></div>
+    </section>
+  </main>
+
+  <script src="/static/charts.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

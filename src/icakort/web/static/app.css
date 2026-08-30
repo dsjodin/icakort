@@ -1,0 +1,205 @@
+/* Färgtokens enligt dataviz-referenspaletten. Ljusa värden på :root,
+   mörka under både prefers-color-scheme och [data-theme="dark"]. */
+:root {
+  color-scheme: light;
+  --page:           #f9f9f7;
+  --surface-1:      #fcfcfb;
+  --text-primary:   #0b0b0b;
+  --text-secondary: #52514e;
+  --text-muted:     #898781;
+  --gridline:       #e1e0d9;
+  --baseline:       #c3c2b7;
+  --border:         rgba(11, 11, 11, 0.10);
+  --good:           #0ca30c;
+  --warning:        #fab219;
+
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+
+  /* Sekventiell blå ramp för magnitudjämförelser (en serie). */
+  --seq:      #2a78d6;
+  --seq-soft: #86b6ef;
+  /* Divergerande motpol: rabattrader pekar åt andra hållet från nollinjen. */
+  --negative: #e34948;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --page:           #0d0d0d;
+    --surface-1:      #1a1a19;
+    --text-primary:   #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted:     #898781;
+    --gridline:       #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255, 255, 255, 0.10);
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --seq:      #3987e5;
+    --seq-soft: #184f95;
+    --negative: #e66767;
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:           #0d0d0d;
+  --surface-1:      #1a1a19;
+  --text-primary:   #ffffff;
+  --text-secondary: #c3c2b7;
+  --text-muted:     #898781;
+  --gridline:       #2c2c2a;
+  --baseline:       #383835;
+  --border:         rgba(255, 255, 255, 0.10);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --seq:      #3987e5;
+  --seq-soft: #184f95;
+  --negative: #e66767;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 0 24px 64px;
+  background: var(--page);
+  color: var(--text-primary);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+main { max-width: 1080px; margin: 0 auto; }
+
+.page-head { max-width: 1080px; margin: 0 auto; padding: 32px 0 16px; }
+.page-head h1 { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.01em; }
+.sub { margin: 4px 0 0; color: var(--text-secondary); }
+
+h2 { margin: 0; font-size: 16px; font-weight: 600; }
+h3 { margin: 28px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-secondary); }
+
+/* Filter: en rad, ovanför innehållet den styr. */
+.filters {
+  max-width: 1080px;
+  margin: 0 auto 20px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  align-items: end;
+}
+.filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.filters input,
+.filters select {
+  font: inherit;
+  padding: 6px 8px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.presets, .toolbar { display: flex; gap: 4px; }
+.presets button, .toolbar button {
+  font: inherit;
+  padding: 7px 12px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.presets button:hover, .toolbar button:hover { color: var(--text-primary); }
+.presets button.is-active, .toolbar button.is-active {
+  color: var(--text-primary);
+  border-color: var(--baseline);
+  font-weight: 600;
+}
+
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.tile-label { font-size: 12px; color: var(--text-secondary); }
+.tile-value { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; }
+
+.card {
+  padding: 20px;
+  margin-bottom: 20px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.card .sub { margin-bottom: 12px; }
+
+.viz-root { position: relative; }
+.viz-root svg { display: block; width: 100%; height: auto; overflow: visible; }
+
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0 0; }
+.legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
+.legend-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.legend-line { width: 14px; height: 2px; border-radius: 1px; flex: none; }
+
+.tooltip {
+  position: absolute;
+  z-index: 5;
+  min-width: 120px;
+  padding: 8px 10px;
+  pointer-events: none;
+  background: var(--surface-1);
+  border: 1px solid var(--baseline);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 12px;
+}
+.tooltip[hidden] { display: none; }
+.tooltip-head { color: var(--text-secondary); margin-bottom: 6px; }
+.tooltip-row { display: flex; align-items: baseline; gap: 8px; margin-top: 3px; }
+.tooltip-key { width: 14px; height: 2px; border-radius: 1px; flex: none; align-self: center; }
+.tooltip-value { font-weight: 600; font-variant-numeric: tabular-nums; }
+.tooltip-name { color: var(--text-secondary); }
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { padding: 7px 8px; text-align: left; border-bottom: 1px solid var(--gridline); }
+th { font-weight: 600; color: var(--text-secondary); font-size: 12px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tbody tr.clickable { cursor: pointer; }
+tbody tr.clickable:hover { background: var(--page); }
+tbody tr.is-active { background: var(--page); font-weight: 600; }
+
+.table-view { margin-top: 12px; }
+.table-view summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; }
+.table-scroll { overflow-x: auto; }
+
+.meter { height: 8px; border-radius: 4px; background: var(--gridline); overflow: hidden; margin: 8px 0 4px; }
+.meter-fill { height: 100%; background: var(--seq); }
+
+.note { color: var(--text-secondary); }
+.empty { color: var(--text-muted); padding: 12px 0; }

@@ -1,0 +1,112 @@
+{
+  "list_entry": {
+    "__typename": "ReceiptBaseDetails",
+    "key": "rcpt-test-0001",
+    "purchaseDate": "2026-03-14T17:22:00Z",
+    "totalAmount": { "formatted": "179,43 kr" },
+    "attributes": { "isCopy": false, "isExpensed": false, "isReturn": false, "isTrashed": false },
+    "store": { "name": "ICA Kvantum Testköping" }
+  },
+  "receipt": {
+    "key": "rcpt-test-0001",
+    "content": {
+      "header": {
+        "totalPurchaseAmount": "179,43 kr",
+        "subAmounts": [],
+        "isoDate": "2026-03-14T17:22:00Z",
+        "formattedDate": "14 mars 2026",
+        "text": "Ditt kvitto"
+      },
+      "items": {
+        "allItems": [
+          {
+            "text": "Varor",
+            "items": [
+              {
+                "type": "ProductListItem",
+                "text": "MJÖLK MELLAN 1,5% 1L",
+                "name": "MJÖLK MELLAN 1,5% 1L",
+                "money": { "formatted": "35,90 kr" },
+                "quantityCost": { "formatted": "2 st x 17,95 kr" },
+                "deposits": [],
+                "costModifiers": [],
+                "identifiers": ["7310865004703"]
+              },
+              {
+                "type": "ProductListItem",
+                "text": "BANAN EKO",
+                "name": "BANAN EKO",
+                "money": { "formatted": "17,73 kr" },
+                "quantityCost": { "formatted": "0,712 kg x 24,90 kr/kg" },
+                "deposits": [],
+                "costModifiers": [],
+                "identifiers": []
+              },
+              {
+                "type": "ProductListItem",
+                "text": "KAFFE MELLANROST 450G",
+                "name": "KAFFE MELLANROST 450G",
+                "money": { "formatted": "59,90 kr" },
+                "quantityCost": { "formatted": "1 st x 59,90 kr" },
+                "deposits": [],
+                "costModifiers": [
+                  { "description": "Stammisrabatt", "money": { "formatted": "10,00 kr" }, "isRefund": true }
+                ],
+                "identifiers": ["7310070001234"]
+              },
+              {
+                "type": "ProductListItem",
+                "text": "COCA COLA 33CL 6-P",
+                "name": "COCA COLA 33CL 6-P",
+                "money": { "formatted": "49,90 kr" },
+                "quantityCost": { "formatted": "1 st x 49,90 kr" },
+                "deposits": [
+                  { "description": "Pant", "money": { "formatted": "6,00 kr" }, "isRefund": false }
+                ],
+                "costModifiers": [],
+                "identifiers": []
+              },
+              {
+                "type": "ProductListItem",
+                "text": "PRYLBURK XYZ",
+                "name": "PRYLBURK XYZ",
+                "money": { "formatted": "25,00 kr" },
+                "quantityCost": { "formatted": "1 st x 25,00 kr" },
+                "deposits": [],
+                "costModifiers": [],
+                "identifiers": []
+              },
+              {
+                "type": "GeneralDiscountListItem",
+                "text": "Kuponger",
+                "money": { "formatted": "5,00 kr" },
+                "isRefund": true
+              }
+            ]
+          }
+        ],
+        "noBonusItems": [],
+        "returnedItems": []
+      },
+      "storeInformation": {
+        "text": "Butiksinformation",
+        "storeInformation": [
+          { "property": "Butiksnummer", "value": "12345" },
+          { "property": "Adress", "value": "Storgatan 1, Testköping" }
+        ]
+      },
+      "paymentInformation": {
+        "text": "Betalning",
+        "totals": {
+          "text": "Summering",
+          "totals": [
+            { "property": "Totalt", "value": "179,43 kr", "subRows": [] },
+            { "property": "Varav moms", "value": "21,35 kr", "subRows": [] }
+          ]
+        }
+      }
+    },
+    "sender": { "name": "ICA", "key": "ica" },
+    "attributes": { "isUpdatedWithReturns": false }
+  }
+}
