@@ -292,6 +292,16 @@
       var hit = el("rect", {
         x: 0, y: y, width: W, height: rowH - 2, fill: "transparent", tabindex: 0
       });
+      if (options.onSelect) {
+        hit.style.cursor = "pointer";
+        hit.addEventListener("click", function () { options.onSelect(d); });
+        hit.addEventListener("keydown", function (event) {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            options.onSelect(d);
+          }
+        });
+      }
       function show() {
         ctx.tooltip.show(negative ? zeroX - w : zeroX + w, y + 4, d.label,
           [{ value: fmt(d.value, 2), name: d.note || d.suffix || "", color: color }]);

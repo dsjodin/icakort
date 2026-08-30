@@ -38,7 +38,24 @@ def test_monthly_and_store_breakdown(conn):
 
 def test_filters_narrow_the_result(conn):
     assert stats.summary(conn, stats.Filters(date_from="2026-04-01"))["receipts"] == 0
-    assert stats.summary(conn, stats.Filters(category="Dryck"))["total_ore"] == 4990 + 5590
+
+
+def test_the_two_levels_narrow_differently(conn):
+    """Gruppen samlar löven -- det är hela poängen med två nivåer.
+
+    Kaffet och colan är olika kategorier men samma grupp: filtrerar man på
+    gruppen får man båda, filtrerar man på lövet bara det ena.
+    """
+    assert stats.summary(conn, stats.Filters(group="Dryck"))["total_ore"] == 4990 + 5590
+    assert stats.summary(conn, stats.Filters(category="Kaffe & te"))["total_ore"] == 4990
+    assert stats.summary(conn, stats.Filters(category="Läsk & vatten"))["total_ore"] == 5590
+
+
+def test_group_totals_match_category_totals(conn):
+    """Varje rad har både nivåerna, så summorna måste vara identiska."""
+    by_group = sum(row["total_ore"] for row in stats.by_group(conn))
+    by_category = sum(row["total_ore"] for row in stats.by_category(conn))
+    assert by_group == by_category == stats.summary(conn)["total_ore"]
 
 
 def test_top_items_excludes_discount_rows(conn):
@@ -72,3 +89,17 @@ def test_saving_twice_is_idempotent(conn, raw_receipt):
 
 def test_verify_finds_no_mismatch(conn):
     assert sync.verify(conn) == []
+
+
+def test_each_group_appears_once(conn):
+    """Aliaset "category" krockar med kolumnen items.category i GROUP BY.
+
+    SQLite låter kolumnen vinna, så grupperingen skedde på lövet medan
+    gruppnamnet visades -- varje grupp dök upp en gång per löv. Summorna blev
+    ändå rätt, vilket är varför bara den här kontrollen fångar det.
+    """
+    groups = [row["category"] for row in stats.by_group(conn)]
+    assert len(groups) == len(set(groups)), groups
+
+    categories = [row["category"] for row in stats.by_category(conn)]
+    assert len(categories) == len(set(categories)), categories

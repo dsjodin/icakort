@@ -6,7 +6,8 @@
                 "jul", "aug", "sep", "okt", "nov", "dec"];
   var STACK_SLOTS = 6;   // fem kategorier + "Övrigt" - taket för en läsbar stapel
 
-  var state = { from: "", to: "", store: "", category: "", order: "spend", item: null };
+  var state = { from: "", to: "", store: "", category: "", group: "",
+                order: "spend", item: null };
   var latest = {};       // senast hämtade svar, för omritning vid resize
 
   function $(id) { return document.getElementById(id); }
@@ -17,6 +18,7 @@
     if (state.to) params.set("to", state.to);
     if (state.store) params.set("store", state.store);
     if (state.category) params.set("category", state.category);
+    if (state.group) params.set("group", state.group);
     for (var key in extra || {}) params.set(key, extra[key]);
     return params.toString();
   }
@@ -118,29 +120,49 @@
   }
 
   function renderCategories(data) {
-    var total = data.by_category.reduce(function (sum, row) { return sum + row.total_ore; }, 0);
-    Charts.barsH($("chart-categories"), data.by_category.map(function (row) {
-      var share = total ? percent(row.total_ore / total, 1) : "";
-      return { label: row.category, value: row.total_ore, suffix: share, note: share + " av totalen" };
-    }));
+    // Diagrammen visar grupper, tabellen visar löven. Fyrtio kategorier
+    // ryms inte i en läsbar stapel, men de behövs i detaljen.
+    var rows = state.group ? data.by_category : data.by_group;
+    var months = state.group ? data.by_month : data.group_by_month;
+    var total = rows.reduce(function (sum, row) { return sum + row.total_ore; }, 0);
 
-    // Fem största kategorier + Övrigt: fler serier gör stapeln oläsbar.
-    var top = data.by_category.slice(0, STACK_SLOTS - 1).map(function (row) { return row.category; });
-    var months = [];
+    $("category-level").textContent = state.group
+      ? "Kategorier i " + state.group
+      : "Huvudgrupper";
+    $("category-back").hidden = !state.group;
+
+    Charts.barsH($("chart-categories"), rows.map(function (row) {
+      var share = total ? percent(row.total_ore / total, 1) : "";
+      return {
+        label: row.category,
+        value: row.total_ore,
+        suffix: share,
+        note: share + " av totalen"
+      };
+    }), {
+      // Klick på en grupp borrar ner till dess kategorier.
+      onSelect: state.group ? null : function (row) {
+        state.group = row.label;
+        refresh();
+      }
+    });
+
+    var top = rows.slice(0, STACK_SLOTS - 1).map(function (row) { return row.category; });
+    var labels = [];
     var cells = {};
-    data.by_month.forEach(function (row) {
-      if (months.indexOf(row.month) === -1) months.push(row.month);
+    months.forEach(function (row) {
+      if (labels.indexOf(row.month) === -1) labels.push(row.month);
       var name = top.indexOf(row.category) === -1 ? "Övrigt" : row.category;
       cells[row.month + "|" + name] = (cells[row.month + "|" + name] || 0) + row.total_ore;
     });
-    months.sort();
+    labels.sort();
 
     var names = top.concat(["Övrigt"]);
     var series = names.map(function (name, i) {
       return {
         name: name,
         color: Charts.token("--series-" + (i + 1)),
-        values: months.map(function (month) { return cells[month + "|" + name] || 0; })
+        values: labels.map(function (month) { return cells[month + "|" + name] || 0; })
       };
     }).filter(function (s) {
       return s.values.some(function (v) { return v > 0; });
@@ -148,12 +170,11 @@
 
     Charts.stackedColumns(
       $("chart-category-months"),
-      months.map(function (m, i) { return monthLabel(m, i, months.length); }),
+      labels.map(function (m, i) { return monthLabel(m, i, labels.length); }),
       series,
-      { titles: months }
+      { titles: labels }
     );
 
-    // Tabellvyn är reliefen för de ljusa serierna i ljust läge.
     table($("table-category-months"),
       [{ title: "Månad", value: function (r) { return r.month; } }]
         .concat(series.map(function (s) {
@@ -162,7 +183,7 @@
             value: function (r) { return Charts.formatKr(cells[r.month + "|" + s.name] || 0, 2); }
           };
         })),
-      months.map(function (month) { return { month: month }; }));
+      labels.map(function (month) { return { month: month }; }));
   }
 
   function renderItems(data) {
@@ -253,6 +274,13 @@
     });
     box.appendChild(rerun);
 
+    var suggest = document.createElement("button");
+    suggest.type = "button";
+    suggest.className = "rerun";
+    suggest.textContent = "Föreslå kategorier med Claude";
+    suggest.addEventListener("click", function () { startJob("/api/job/classify"); });
+    box.appendChild(suggest);
+
     box.appendChild(text("h3", "Okategoriserat"));
 
     var panel = document.createElement("div");
@@ -340,6 +368,7 @@
     $("btn-login").disabled = busy;
     $("btn-sync").disabled = busy;
     $("btn-reparse").disabled = busy;
+    document.querySelectorAll("button.rerun").forEach(function (b) { b.disabled = busy; });
   }
 
   function renderJob(job) {
@@ -348,7 +377,8 @@
     panel.hidden = false;
     $("job-title").textContent = { login: "Loggar in och synkar",
                                     sync: "Synkar",
-                                    reparse: "Tolkar om sparad rådata" }[job.kind] || "Jobb";
+                                    reparse: "Tolkar om sparad rådata",
+                                    classify: "Frågar Claude om kategorier" }[job.kind] || "Jobb";
 
     var log = $("job-log");
     log.textContent = job.log.join("\n") || "Startar …";
@@ -368,7 +398,9 @@
     if (done && job.result) {
       var what = job.kind === "reparse"
         ? job.result.reparsed + " kvitton omtolkade"
-        : job.result.fetched + " nya kvitton";
+        : job.kind === "classify"
+          ? job.result.assigned + " varor kategoriserade (~$" + job.result.cost_usd + ")"
+          : job.result.fetched + " nya kvitton";
       var warning = job.result.unparsed
         ? " · VARNING: " + job.result.unparsed + " utan varurader"
         : (job.result.uncategorized
@@ -639,6 +671,10 @@
     $("btn-login").addEventListener("click", function () { startJob("/api/job/login"); });
     $("btn-sync").addEventListener("click", function () { startJob("/api/job/sync"); });
     $("btn-reparse").addEventListener("click", function () { startJob("/api/job/reparse"); });
+    $("category-back").addEventListener("click", function () {
+      state.group = "";
+      refresh();
+    });
     $("job-dismiss").addEventListener("click", function () { $("job-panel").hidden = true; });
 
     var timer;

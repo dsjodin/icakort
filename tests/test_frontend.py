@@ -212,7 +212,7 @@ def test_bulk_categorisation_clears_several_items_at_once(page):
     assert before >= 1
 
     page.locator(".bulk-tools button", has_text="Markera alla synliga").click()
-    page.locator(".bulk-tools select").select_option("Skafferi")
+    page.locator(".bulk-tools select").select_option("Pasta & ris")
     page.locator(".bulk-tools button.primary").click()
     page.wait_for_timeout(1500)
 
@@ -235,7 +235,7 @@ def test_unlocking_opens_the_account_view(page, server):
 
 def test_an_excluded_item_vanishes_from_the_main_view(page, server):
     def names(path):
-        # Jämför nycklar, inte råtext: "kaffe" är en delsträng av "Skafferi".
+        # Jämför nycklar, inte råtext: varunamn kan vara delsträngar av kategorinamn.
         return {row["name_key"] for row in page.request.get(f"{server}{path}").json()["items"]}
 
     page.request.post(f"{server}/api/unlock", data={"key": "test-nyckel"})

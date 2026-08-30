@@ -76,12 +76,40 @@ def categories_path() -> Path:
     return data_dir() / "categories.yaml"
 
 
+def _file_version(path: Path) -> int:
+    """Läs version: ur en regelfil utan att tolka hela YAML:en."""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("version:"):
+                return int(line.split(":", 1)[1].strip())
+    except (OSError, ValueError):
+        pass
+    return 1        # filer utan versionsrad är den ursprungliga taxonomin
+
+
 def ensure_categories_file() -> Path:
-    """Lägg ut förlagan första gången. En befintlig fil rörs aldrig."""
+    """Lägg ut förlagan, och uppgradera en fil från en äldre taxonomi.
+
+    Utan uppgraderingen når en ny taxonomi aldrig en befintlig installation --
+    filen ligger i datakatalogen och skrevs en gång vid första körningen.
+    Den gamla säkras vid sidan om, så egna tillägg går att flytta över för hand.
+    """
     path = categories_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(DEFAULT_CATEGORIES, path)
+        return path
+
+    packaged = _file_version(DEFAULT_CATEGORIES)
+    if _file_version(path) < packaged:
+        backup = path.with_suffix(f".v{_file_version(path)}.bak")
+        shutil.copyfile(path, backup)
+        shutil.copyfile(DEFAULT_CATEGORIES, path)
+        print(
+            f"Regelfilen uppgraderad till version {packaged}. "
+            f"Den gamla sparad som {backup.name}."
+        )
     return path
 
 

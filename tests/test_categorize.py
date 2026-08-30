@@ -24,10 +24,10 @@ def ruleset():
 @pytest.mark.parametrize(
     "name_key,expected",
     [
-        ("mjölk mellan", "Mejeri & ägg"),
-        ("banan eko", "Frukt & grönt"),
-        ("kaffe mellanrost", "Dryck"),
-        ("coca cola", "Dryck"),
+        ("mjölk mellan", "Mjölk & fil"),
+        ("banan eko", "Frukt"),
+        ("kaffe mellanrost", "Kaffe & te"),
+        ("coca cola", "Läsk & vatten"),
         ("prylburk xyz", "Okategoriserat"),
     ],
 )
@@ -52,7 +52,7 @@ def test_recategorize_marks_unknown(conn, ruleset):
 
 def test_override_beats_rules(conn, ruleset):
     categorize.recategorize(conn, ruleset)
-    store.set_override(conn, "prylburk xyz", "Städ & hushåll")
+    store.set_override(conn, "prylburk xyz", "Städ & rengöring")
     counts = categorize.recategorize(conn, ruleset)
 
     assert counts["fallback"] == 0
@@ -60,7 +60,7 @@ def test_override_beats_rules(conn, ruleset):
     row = conn.execute(
         "SELECT category FROM items WHERE name_key = 'prylburk xyz'"
     ).fetchone()
-    assert row["category"] == "Städ & hushåll"
+    assert row["category"] == "Städ & rengöring"
 
 
 def test_coverage_reflects_unknown_money(conn, ruleset):
@@ -96,15 +96,15 @@ def test_literal_matches_at_word_boundaries(literal, name, expected):
 @pytest.mark.parametrize(
     "name_key,expected",
     [
-        ("kaffe mellanrost", "Dryck"),          # inte Blommor via "ros"
-        ("diskmedel citron", "Städ & hushåll"),  # inte Frukt & grönt via "citron"
-        ("kycklingfilé", "Kött & chark"),
-        ("ostbågar", "Godis & snacks"),          # inte Mejeri via "ost"
-        ("getost", "Mejeri & ägg"),
-        ("ost herrgård", "Mejeri & ägg"),
-        ("jordnötssmör", "Skafferi"),            # inte Mejeri via "smör"
+        ("kaffe mellanrost", "Kaffe & te"),      # inte Blommor via "ros"
+        ("diskmedel citron", "Städ & rengöring"),  # inte Frukt via "citron"
+        ("kycklingfilé", "Fågel"),
+        ("ostbågar", "Chips & snacks"),          # inte Ost via "ost"
+        ("getost", "Ost"),
+        ("ost herrgård", "Ost"),
+        ("jordnötssmör", "Nötter & frön"),       # inte Smör & margarin via "smör"
         ("krukväxt basilika", "Blommor & växter"),
-        ("bärkasse", "Städ & hushåll"),
+        ("bärkasse", "Förvaring & påsar"),
     ],
 )
 def test_ambiguous_names_land_in_the_right_category(ruleset, name_key, expected):

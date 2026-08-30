@@ -47,12 +47,14 @@ CREATE TABLE IF NOT EXISTS items (
     identifiers     TEXT,
     excluded        INTEGER NOT NULL DEFAULT 0,
     category        TEXT,
+    category_group  TEXT,
     category_source TEXT
 );
 
 CREATE TABLE IF NOT EXISTS overrides (
     name_key   TEXT PRIMARY KEY,
     category   TEXT NOT NULL,
+    source     TEXT,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -70,6 +72,8 @@ _MIGRATIONS = (
     ("receipts", "owner_name", "TEXT"),
     ("receipts", "excluded", "INTEGER NOT NULL DEFAULT 0"),
     ("items", "excluded", "INTEGER NOT NULL DEFAULT 0"),
+    ("items", "category_group", "TEXT"),
+    ("overrides", "source", "TEXT"),
 )
 
 # Indexen skapas efter migreringen: ett index på owner_key kan inte skapas
@@ -197,25 +201,67 @@ def assign_owner(conn: sqlite3.Connection, owner_key: str, owner_name: str) -> i
     conn.commit()
     return cursor.rowcount
 
-def set_override(conn: sqlite3.Connection, name_key: str, category: str) -> None:
+def reset_categorisation(conn: sqlite3.Connection) -> dict[str, int]:
+    """Nollställ kategoriseringen inför en ny taxonomi.
+
+    Bara härledda fält och manuella val rörs. Kvitton, varurader, belopp,
+    ägare och undantag är orörda -- kategori har alltid varit ett härlett
+    fält, och det är det som gör en omstart ofarlig.
+    """
+    overrides_removed = conn.execute("DELETE FROM overrides").rowcount
+    items_cleared = conn.execute(
+        "UPDATE items SET category = NULL, category_group = NULL, category_source = NULL"
+    ).rowcount
+    conn.commit()
+    return {"overrides": overrides_removed, "items": items_cleared}
+
+
+def set_override(
+    conn: sqlite3.Connection, name_key: str, category: str, source: str = "manual"
+) -> None:
     conn.execute(
         """
-        INSERT INTO overrides (name_key, category) VALUES (?, ?)
-        ON CONFLICT(name_key) DO UPDATE SET category = excluded.category
+        INSERT INTO overrides (name_key, category, source) VALUES (?, ?, ?)
+        ON CONFLICT(name_key) DO UPDATE SET
+            category = excluded.category,
+            source   = excluded.source
         """,
-        (name_key, category),
+        (name_key, category, source),
     )
     conn.commit()
 
 def set_overrides_bulk(
-    conn: sqlite3.Connection, name_keys: list[str], category: str
+    conn: sqlite3.Connection,
+    name_keys: list[str],
+    category: str,
+    source: str = "manual",
 ) -> int:
     """Sätt samma kategori på många varor. En commit, inte en per vara."""
-    rows = [(key, category) for key in name_keys if key]
+    rows = [(key, category, source) for key in name_keys if key]
     conn.executemany(
         """
-        INSERT INTO overrides (name_key, category) VALUES (?, ?)
-        ON CONFLICT(name_key) DO UPDATE SET category = excluded.category
+        INSERT INTO overrides (name_key, category, source) VALUES (?, ?, ?)
+        ON CONFLICT(name_key) DO UPDATE SET
+            category = excluded.category,
+            source   = excluded.source
+        """,
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+
+def set_overrides_from_model(
+    conn: sqlite3.Connection, assignments: dict[str, str]
+) -> int:
+    """Skriv modellens förslag. Märks som 'llm' så de går att granska samlat."""
+    rows = [(key, category, "llm") for key, category in assignments.items() if key and category]
+    conn.executemany(
+        """
+        INSERT INTO overrides (name_key, category, source) VALUES (?, ?, ?)
+        ON CONFLICT(name_key) DO UPDATE SET
+            category = excluded.category,
+            source   = excluded.source
         """,
         rows,
     )
@@ -262,9 +308,14 @@ def overrides(conn: sqlite3.Connection) -> dict[str, str]:
         row["name_key"]: row["category"] for row in conn.execute("SELECT * FROM overrides")
     }
 
-def apply_categories(conn: sqlite3.Connection, updates: Iterable[tuple[str, str, int]]) -> int:
-    """updates: (kategori, källa, item-id)."""
+def apply_categories(
+    conn: sqlite3.Connection, updates: Iterable[tuple[str, str, str, int]]
+) -> int:
+    """updates: (kategori, grupp, källa, item-id)."""
     rows = list(updates)
-    conn.executemany("UPDATE items SET category = ?, category_source = ? WHERE id = ?", rows)
+    conn.executemany(
+        "UPDATE items SET category = ?, category_group = ?, category_source = ? WHERE id = ?",
+        rows,
+    )
     conn.commit()
     return len(rows)

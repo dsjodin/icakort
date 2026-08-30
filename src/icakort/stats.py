@@ -21,6 +21,7 @@ class Filters:
     date_to: str | None = None
     store: str | None = None
     category: str | None = None
+    group: str | None = None
     owner: str | None = None
     # Undantagna varor är osynliga som standard. Bara den dolda vyn sätter
     # den här till True.
@@ -41,6 +42,9 @@ class Filters:
         if self.category:
             clauses.append(f"{alias_item}.category = ?")
             params.append(self.category)
+        if self.group:
+            clauses.append(f"{alias_item}.category_group = ?")
+            params.append(self.group)
         if self.owner:
             clauses.append(f"{alias_receipt}.owner_key = ?")
             params.append(self.owner)
@@ -108,8 +112,46 @@ def by_category(conn: sqlite3.Connection, filters: Filters | None = None) -> lis
                COUNT(*)                               AS items
         {_JOIN}
         WHERE {where}
-        GROUP BY category
+        GROUP BY COALESCE(i.category, 'Okategoriserat')
         ORDER BY total_ore DESC
+        """,
+        params,
+    )
+
+
+def by_group(conn: sqlite3.Connection, filters: Filters | None = None) -> list[dict]:
+    """Utgifter per huvudgrupp. Det diagrammen visar -- fyrtio kategorier
+    ryms inte i en läsbar stapel."""
+    filters = filters or Filters()
+    where, params = filters.where()
+    return _rows(
+        conn,
+        f"""
+        SELECT COALESCE(i.category_group, 'Övrigt') AS category,
+               SUM(i.line_total_ore)                AS total_ore,
+               COUNT(*)                             AS items
+        {_JOIN}
+        WHERE {where}
+        GROUP BY COALESCE(i.category_group, 'Övrigt')
+        ORDER BY total_ore DESC
+        """,
+        params,
+    )
+
+
+def group_by_month(conn: sqlite3.Connection, filters: Filters | None = None) -> list[dict]:
+    filters = filters or Filters()
+    where, params = filters.where()
+    return _rows(
+        conn,
+        f"""
+        SELECT substr(r.purchase_date, 1, 7)        AS month,
+               COALESCE(i.category_group, 'Övrigt') AS category,
+               SUM(i.line_total_ore)                AS total_ore
+        {_JOIN}
+        WHERE {where} AND r.purchase_date IS NOT NULL
+        GROUP BY substr(r.purchase_date, 1, 7), COALESCE(i.category_group, 'Övrigt')
+        ORDER BY month, total_ore DESC
         """,
         params,
     )
@@ -126,7 +168,7 @@ def category_by_month(conn: sqlite3.Connection, filters: Filters | None = None) 
                SUM(i.line_total_ore)                  AS total_ore
         {_JOIN}
         WHERE {where} AND r.purchase_date IS NOT NULL
-        GROUP BY month, category
+        GROUP BY substr(r.purchase_date, 1, 7), COALESCE(i.category, 'Okategoriserat')
         ORDER BY month, total_ore DESC
         """,
         params,
@@ -249,6 +291,16 @@ def stores(conn: sqlite3.Connection) -> list[str]:
         for row in conn.execute(
             "SELECT DISTINCT store_name FROM receipts "
             "WHERE store_name IS NOT NULL ORDER BY store_name"
+        )
+    ]
+
+
+def groups(conn: sqlite3.Connection) -> list[str]:
+    return [
+        row["category_group"]
+        for row in conn.execute(
+            "SELECT DISTINCT category_group FROM items "
+            "WHERE category_group IS NOT NULL ORDER BY category_group"
         )
     ]
 

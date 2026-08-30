@@ -331,3 +331,15 @@ button.rerun:disabled { opacity: 0.5; cursor: default; }
   font-weight: 600;
 }
 .bulk .table-scroll { max-height: 420px; overflow-y: auto; }
+
+#category-back {
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 10px;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+#category-back:hover { color: var(--text-primary); border-color: var(--baseline); }

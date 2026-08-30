@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from starlette.requests import Request
 
 from .. import categorize as categorize_mod
-from .. import jobs, stats, store, sync as sync_mod
+from .. import classify, jobs, stats, store, sync as sync_mod
 from ..kivra import auth as kivra_auth
 from ..kivra.client import KivraClient
 from ..normalize import name_key as make_name_key
@@ -52,12 +52,14 @@ def get_filters(
     date_to: Optional[str] = Query(None, alias="to"),
     store_name: Optional[str] = Query(None, alias="store"),
     category: Optional[str] = Query(None),
+    group: Optional[str] = Query(None),
 ) -> stats.Filters:
     return stats.Filters(
         date_from=date_from or None,
         date_to=date_to or None,
         store=store_name or None,
         category=category or None,
+        group=group or None,
     )
 
 
@@ -176,6 +178,58 @@ def api_reparse() -> dict:
                 "uncategorized": counts.get("fallback", 0)}
 
     return _start(jobs.runner, "reparse", work)
+
+
+@app.post("/api/job/classify")
+def api_classify() -> dict:
+    """Låt Claude föreslå kategorier för varor reglerna missat.
+
+    Kör som bakgrundsjobb: ett par tusen varunamn är ett tiotal anrop, och
+    det ska inte hålla en request öppen.
+    """
+    if not classify.has_api_key():
+        raise HTTPException(
+            status_code=409,
+            detail="ANTHROPIC_API_KEY saknas. Lägg till den i .env och starta om containern.",
+        )
+
+    def work(job: jobs.Job) -> dict:
+        conn = store.connect(same_thread=False)
+        try:
+            ruleset = categorize_mod.load_ruleset()
+            unknown = [
+                row["name_key"]
+                for row in categorize_mod.unknown_items(conn, limit=5000)
+                if row["name_key"]
+            ]
+            if not unknown:
+                jobs.log(job, "Inga okategoriserade varor kvar.")
+                return {"assigned": 0, "unknown": 0}
+
+            jobs.log(job, f"{len(unknown)} varunamn att fråga om …")
+            grouped: dict[str, list[str]] = {}
+            for rule in ruleset.rules:
+                grouped.setdefault(rule.group, []).append(rule.category)
+
+            result = classify.classify_names(
+                unknown,
+                ruleset.category_names,
+                grouped,
+                progress=lambda message: jobs.log(job, message),
+            )
+            store.set_overrides_from_model(conn, result.assignments)
+            counts = categorize_mod.recategorize(conn)
+            jobs.log(job, result.summary())
+            return {
+                "assigned": len(result.assignments),
+                "unknown": len(result.unknown),
+                "uncategorized": counts.get("fallback", 0),
+                "cost_usd": round(result.estimated_cost_usd, 2),
+            }
+        finally:
+            conn.close()
+
+    return _start(jobs.runner, "classify", work)
 
 
 @app.get("/api/job")
@@ -311,13 +365,18 @@ def api_categorize(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
 def api_filters(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
     lo, hi = stats.date_bounds(conn)
     try:
-        available = categorize_mod.load_ruleset().category_names
+        ruleset = categorize_mod.load_ruleset()
+        available = ruleset.category_names
+        available_groups = ruleset.group_names
     except categorize_mod.RuleError:
         available = stats.categories(conn)
+        available_groups = stats.groups(conn)
     return {
         "stores": stats.stores(conn),
         "categories": stats.categories(conn),
+        "groups": stats.groups(conn),
         "all_categories": available,
+        "all_groups": available_groups,
         "date_from": lo,
         "date_to": hi,
     }
@@ -342,6 +401,8 @@ def api_categories(
     conn: sqlite3.Connection = Depends(get_conn),
 ) -> dict:
     return {
+        "by_group": stats.by_group(conn, filters),
+        "group_by_month": stats.group_by_month(conn, filters),
         "by_category": stats.by_category(conn, filters),
         "by_month": stats.category_by_month(conn, filters),
     }

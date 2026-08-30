@@ -11,163 +11,379 @@
 # matchar "havremjölk" och "kyckling" matchar "kycklingfilé", medan "ros"
 # inte matchar "kaffe mellanrost".
 #
-# Arbetsflöde: kör `icakort categorize --unknown` för att se okategoriserade
-# varor sorterade på hur mycket de kostat dig, och lägg till regler uppifrån.
+# Varje kategori hör till en grupp. Gruppen är vad diagrammen visar --
+# ett stapeldiagram tål inte fyrtio serier -- och kategorin är detaljen du
+# filtrerar och borrar ner till.
+#
+# Notera att det inte finns någon kategori "Fryst". Förvaringsform är inte
+# varutyp: fryst lax är fisk, glass är glass, fryst pizza är pizza. En
+# temperaturkategori korsar alla andra och gör placeringen godtycklig.
+#
+# Arbetsflöde: kör `icakort categorize --unknown`, eller använd
+# bulkverktyget och Claude-förslagen i webbappen.
 
+version: 2
 fallback: Okategoriserat
 
 categories:
+  # --- Entydiga icke-livsmedel först ---------------------------------------
+
   - name: Pant
+    group: Pant & rabatter
     match: ["pant"]
 
-  - name: Städ & hushåll
+  - name: Städ & rengöring
+    group: Hushåll
     match:
       - diskmedel
       - disktrasa
+      - diskborste
+      - maskindisk
       - tvättmedel
       - sköljmedel
       - rengöring
       - allrengöring
-      - soppåsar
-      - påsar
+      - fönsterputs
+      - ugnsrent
+      - propplösare
+      - skurmedel
+      - svamptork
+
+  - name: Papper & plast
+    group: Hushåll
+    match:
+      - hushållspapper
+      - toapapper
+      - toalettpapper
+      - servetter
+      - näsdukar
       - folie
+      - bakplåtspapper
+      - plastfolie
+      - smörpapper
+
+  - name: Förvaring & påsar
+    group: Hushåll
+    match:
+      - soppåsar
+      - fryspåsar
       - plastpåse
       - bärkasse
       - kasse
+      - matlåda
+      - burklock
+
+  - name: Batterier & smått
+    group: Hushåll
+    match:
       - batteri
       - glödlampa
-      - ljus
-      - servetter
+      - lampa
+      - tändstickor
+      - tändare
+      - stearinljus
+      - värmeljus
+      - grillkol
+      - tändvätska
 
-  - name: Hygien & apotek
+  - name: Hygien
+    group: Hygien & barn
     match:
       - tandkräm
       - tandborste
-      - schampo
-      - balsam
+      - tandtråd
+      - munskölj
       - tvål
       - duschtvål
       - deodorant
       - rakhyvel
-      - blöj
+      - rakgel
       - bindor
       - tampong
-      - toapapper
-      - toalettpapper
-      - hushållspapper
-      - näsdukar
+      - trosskydd
+      - bomullspinnar
+
+  - name: Hår & hud
+    group: Hygien & barn
+    match:
+      - schampo
+      - balsam
+      - hårinpackning
+      - hudkräm
+      - handkräm
+      - bodylotion
+      - solkräm
+      - ansiktskräm
+      - läppcerat
+
+  - name: Apotek
+    group: Hygien & barn
+    match:
       - plåster
       - alvedon
-      - solkräm
-      - handkräm
+      - ipren
+      - treo
+      - halstablett
+      - nässpray
+      - vitamin
+      - omega
+      - kondom
+
+  - name: Blöjor & barn
+    group: Hygien & barn
+    match:
+      - blöj
+      - våtservett
+      - barnmat
+      - välling
+      - modersmjölk
+      - nappflaska
+      - napp
 
   - name: Djur
+    group: Övrigt
     match:
       - hundmat
       - kattmat
       - kattsand
       - djurfoder
       - hundgodis
+      - kattgodis
+      - tuggben
+
   - name: Blommor & växter
+    group: Övrigt
     match:
       - blomma
       - blommor
-      - buketten
       - bukett
+      - krukväxt
       - kruk
+      - plantjord
+      - blomjord
       - ros
       - tulpan
+      - lilja
+      - snittblom
 
-  - name: Frukt & grönt
+  - name: Kiosk & tidningar
+    group: Övrigt
+    match:
+      - tidning
+      - tidskrift
+      - veckotidning
+      - lott
+      - trisslott
+      - presentkort
+      - snus
+      - cigarett
+
+  - name: Säsong
+    group: Övrigt
+    match:
+      - julgran
+      - adventsljus
+      - påskris
+      - fyrverkeri
+      - present
+      - julklapp
+
+  # --- Färskvaror -----------------------------------------------------------
+
+  - name: Frukt
+    group: Frukt & grönt
     match:
       - banan
       - äpple
       - päron
       - apelsin
       - clementin
+      - mandarin
       - citron
       - lime
+      - grapefrukt
       - vindruv
       - melon
       - kiwi
       - mango
+      - ananas
+      - persika
+      - nektarin
+      - plommon
       - avokado
+      - jordgubb
+      - blåbär
+      - hallon
+      - björnbär
+      - körsbär
+      - bär
+
+  - name: Grönsaker
+    group: Frukt & grönt
+    match:
       - tomat
       - gurka
       - paprika
       - sallad
       - spenat
-      - morot
-      - morötter
-      - potatis
-      - lök
-      - vitlök
+      - ruccola
       - broccoli
       - blomkål
+      - vitkål
       - zucchini
+      - aubergine
+      - squash
       - champinjon
       - svamp
+      - majs
+      - ärtor
+      - haricots
+      - sparris
+      - purjo
+      - selleri
+      - fänkål
+      - grönsak
+
+  - name: Potatis & rotfrukter
+    group: Frukt & grönt
+    match:
+      - potatis
+      - morot
+      - morötter
+      - rödbet
+      - palsternack
+      - kålrot
+      - rotselleri
+      - lök
+      - vitlök
+      - schalottenlök
       - ingefära
-      - bär
-      - jordgubb
-      - blåbär
-      - hallon
+      - sötpotatis
+
+  - name: Färska örter
+    group: Frukt & grönt
+    match:
       - persilja
       - basilika
+      - dill
+      - gräslök
+      - koriander
+      - timjan
+      - rosmarin
+      - mynta
 
-  - name: Mejeri & ägg
+  - name: Ost
+    group: Mejeri & ägg
     match:
-      - mjölk
-      - yoghurt
-      - youghurt
-      - filmjölk
-      - grädde
-      - creme fraiche
-      - crème fraîche
-      - {re: "(^|\\s)smör"}   # ordbörjan: "jordnötssmör" är skafferi
-      - bregott
-      - margarin
-      - kvarg
-      - kesella
-      - keso
-      - ägg
-      # Ordslut, så inte "ostbågar". Undantag för -rost: kaffe är rostat,
-      # inte en ost ("mellanrost", "mörkrost").
-      - {re: "(?<!r)ost(?!\\w)"}
+      - {re: "(?<!r)ost(?!\\w)"}   # ordslut, men inte "mellanrost" -- kaffe är rostat
       - ostskiv
+      - fetaost
       - mozzarella
       - parmesan
       - herrgård
       - präst
-      - fetaost
+      - grevé
+      - hushållsost
+      - ädelost
+      - brie
+      - halloumi
+
+  - name: Mjölk & fil
+    group: Mejeri & ägg
+    match:
+      - mjölk
+      - filmjölk
+      - kefir
+      - grädde
+      - vispgrädde
+      - matlagningsgrädde
+      - creme fraiche
+      - crème fraîche
+
+  - name: Yoghurt & kvarg
+    group: Mejeri & ägg
+    match:
+      - yoghurt
+      - youghurt
+      - kvarg
+      - kesella
+      - keso
+      - skyr
+
+  - name: Smör & margarin
+    group: Mejeri & ägg
+    match:
+      - {re: "(^|\\s)smör"}   # ordbörjan: "jordnötssmör" är skafferi
+      - bregott
+      - margarin
+      - lätta
+      - flora
+
+  - name: Ägg
+    group: Mejeri & ägg
+    match: ["ägg"]
+
+  - name: Växtbaserat
+    group: Mejeri & ägg
+    match:
       - havredryck
       - sojadryck
+      - mandeldryck
       - oatly
+      - havregurt
+      - sojayoghurt
 
-  - name: Kött & chark
+  - name: Fågel
+    group: Kött & fisk
     match:
       - kyckling
+      - kalkon
+      - anka
+
+
+  - name: Kött
+    group: Kött & fisk
+    match:
       - fläsk
-      - nöt
+      - nötkött
+      - nötfärs
+      - blandfärs
       - färs
       - biff
+      - entrecote
+      - ryggbiff
       - kotlett
+      - revben
+      - lamm
+      - karré
+      - högrev
+      - oxfilé
+      - fläskfilé
+
+  - name: Chark & pålägg
+    group: Kött & fisk
+    match:
       - korv
       - bacon
       - skinka
       - salami
       - pastrami
-      - kalkon
-      - lamm
-      - revben
       - leverpastej
+      - prickig
+      - falukorv
+      - medwurst
+      - rökt
 
   - name: Fisk & skaldjur
+    group: Kött & fisk
     match:
       - lax
       - torsk
       - sej
+      - kolja
+      - abborre
       - räk
+      - kräfta
       - musslor
       - tonfisk
       - sill
@@ -175,8 +391,22 @@ categories:
       - kaviar
       - fiskpinn
       - skaldjur
+      - surimi
 
-  - name: Bröd & bageri
+  - name: Vegetariskt protein
+    group: Kött & fisk
+    match:
+      - quorn
+      - tofu
+      - sojafärs
+      - vegofärs
+      - vegokorv
+      - vegoburgare
+      - falafel
+      - oumph
+
+  - name: Bröd
+    group: Bröd & bageri
     match:
       - bröd
       - limpa
@@ -184,88 +414,244 @@ categories:
       - frukostbröd
       - knäcke
       - tortilla
+      - pitabröd
+      - rågkaka
+      - tunnbröd
+
+  - name: Fikabröd & kakor
+    group: Bröd & bageri
+    match:
       - bulle
       - kanelbull
       - kaka
+      - kakor
       - tårta
       - croissant
       - scones
+      - muffins
+      - wienerbröd
+      - biskvi
 
-  - name: Fryst
-    match:
-      - fryst
-      - frysta
-      - glass
-      - pizza
-      - pommes
+  # --- Skafferi, uppdelat ---------------------------------------------------
 
-  - name: Skafferi
+  - name: Pasta & ris
+    group: Skafferi
     match:
       - pasta
       - spaghetti
+      - makaroner
+      - penne
+      - tagliatelle
+      - lasagneplattor
+      - nudlar
       - ris
       - couscous
       - bulgur
       - quinoa
+
+  - name: Mjöl & bakning
+    group: Skafferi
+    match:
       - mjöl
       - socker
-      - salt
-      - peppar
-      - kryddor
-      - krydda
-      - olja
-      - olivolja
-      - vinäger
-      - ketchup
-      - senap
-      - majonnäs
-      - sås
-      - buljong
+      - florsocker
+      - jäst
+      - bakpulver
+      - vaniljsocker
+      - kakao
+      - bakkakao
+      - mandelmassa
+      - strössel
+
+  - name: Frukost & flingor
+    group: Skafferi
+    match:
+      - müsli
+      - musli
+      - flingor
+      - cornflakes
+      - havregryn
+      - gröt
+      - granola
+
+  - name: Konserver & torrvaror
+    group: Skafferi
+    match:
       - konserv
       - krossade
+      - passerade
+      - tomatpuré
       - bönor
       - linser
       - kikärt
-      - müsli
-      - flingor
-      - havregryn
-      - gröt
+      - kokosmjölk
+      - buljong
+      - fond
+      - torkad
+
+  - name: Såser & smaksättare
+    group: Skafferi
+    match:
+      - ketchup
+      - senap
+      - majonnäs
+      - dressing
+      - sås
+      - sriracha
+      - sambal
+      - soja
+      - fisksås
+      - tacokrydda
+      - tacos
+      - salsa
+
+  - name: Oljor & vinäger
+    group: Skafferi
+    match:
+      - olja
+      - olivolja
+      - rapsolja
+      - vinäger
+      - balsamico
+
+  - name: Kryddor
+    group: Skafferi
+    match:
+      - krydda
+      - kryddor
+      - salt
+      - peppar
+      - paprikapulver
+      - curry
+      - kanel
+      - kardemumma
+      - oregano
+      - chiliflakes
+
+  - name: Nötter & frön
+    group: Skafferi
+    match:
+      - nötter
+      - mandel
+      - cashew
+      - valnöt
+      - hasselnöt
+      - jordnöt
+      - jordnötssmör
+      - solrosfrön
+      - pumpafrön
+      - chiafrön
+      - russin
+
+  - name: Sylt & sött pålägg
+    group: Skafferi
+    match:
       - sylt
       - marmelad
       - honung
-      - jordnötssmör
-      - nudlar
-      - tacos
-      - nötter
-      - mandel
+      - nutella
+      - choklad pålägg
+      - äppelmos
 
-  - name: Dryck
+  # --- Färdigmat ------------------------------------------------------------
+
+  - name: Pizza
+    group: Färdigmat
+    match: ["pizza"]
+
+  - name: Färdigrätter
+    group: Färdigmat
     match:
-      - kaffe
-      - {re: "(^|\\s)te(\\s|$)"}   # bara ordet "te", inte varje ord som slutar på -te
-      - juice
-      - saft
-      - läsk
-      - cola
-      - vatten
-      - mineralvatten
-      - bryggkaffe
-      - energidryck
-      - cider
-      - {re: "(^|\\s)öl(\\s|$)"}   # inte "mjöl"
-      - lättöl
-      - folköl
+      - färdigrätt
+      - pytt
+      - lasagne
+      - gryta
+      - köttbullar
+      - pannkakor
+      - pommes
+      - potatisgratäng
+      - wok
 
-  - name: Godis & snacks
+  - name: Deli & sallad
+    group: Färdigmat
+    match:
+      - sushi
+      - matsallad
+      - smörgås
+      - wrap
+      - soppa
+      - hummus
+
+  # --- Godis, snacks och dryck ---------------------------------------------
+
+  - name: Glass
+    group: Godis & snacks
+    match:
+      - glass
+      - isglass
+      - gelato
+      - sorbet
+
+  - name: Godis
+    group: Godis & snacks
     match:
       - godis
       - choklad
+      - lakrits
+      - tuggummi
+      - klubba
+      - kexchoklad
+      - nougat
+      - marabou
+
+  - name: Chips & snacks
+    group: Godis & snacks
+    match:
       - chips
       - ostbågar
       - popcorn
       - kex
-      - lakrits
-      - tuggummi
+      - saltstänger
+      - nachos
       - snacks
-      - nougat
 
+  - name: Kaffe & te
+    group: Dryck
+    match:
+      - kaffe
+      - bryggkaffe
+      - snabbkaffe
+      - espresso
+      - kapslar
+      - {re: "(^|\\s)te(\\s|$)"}   # bara ordet "te", inte varje ord som slutar på -te
+      - rooibos
+
+  - name: Läsk & vatten
+    group: Dryck
+    match:
+      - läsk
+      - cola
+      - fanta
+      - sprite
+      - mineralvatten
+      - vatten
+      - energidryck
+      - tonic
+
+  - name: Juice & saft
+    group: Dryck
+    match:
+      - juice
+      - saft
+      - smoothie
+      - nypon
+      - måltidsdryck
+
+  - name: Öl & cider
+    group: Dryck
+    match:
+      - {re: "(^|\\s)öl(\\s|$)"}   # inte "mjöl"
+      - lättöl
+      - folköl
+      - cider
+      - alkoholfri

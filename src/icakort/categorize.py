@@ -26,6 +26,15 @@ TYPE_CATEGORIES = {
     "modifier": "Avgifter & justeringar",
 }
 
+# Pant, rabatt och avgifter är inte varor och hör inte hemma bland dem.
+# Egen grupp också för att rabatten ska förbli synlig: nettas den mot
+# varuutgifter försvinner den ur diagrammet.
+TYPE_GROUP = "Pant & rabatter"
+
+# Okategoriserat får synas för sig. Göms det bland blommor och djurmat
+# ser statistiken mer komplett ut än den är.
+FALLBACK_GROUP = "Okategoriserat"
+
 
 class RuleError(ValueError):
     """categories.yaml är felformaterad."""
@@ -47,6 +56,7 @@ def compile_literal(literal: str) -> re.Pattern[str]:
 @dataclass
 class Rule:
     category: str
+    group: str
     patterns: tuple[re.Pattern[str], ...]
 
     def matches(self, name_key: str) -> bool:
@@ -57,6 +67,7 @@ class Rule:
 class Ruleset:
     rules: tuple[Rule, ...]
     fallback: str
+    version: int = 1
 
     @property
     def category_names(self) -> list[str]:
@@ -67,6 +78,27 @@ class Ruleset:
         for name in names:
             seen.setdefault(name, None)
         return list(seen)
+
+    @property
+    def groups(self) -> dict[str, str]:
+        """Kategori -> grupp, inklusive de härledda och fallbacken."""
+        mapping = {rule.category: rule.group for rule in self.rules}
+        for category in TYPE_CATEGORIES.values():
+            mapping[category] = TYPE_GROUP
+        mapping[self.fallback] = FALLBACK_GROUP
+        return mapping
+
+    @property
+    def group_names(self) -> list[str]:
+        seen: dict[str, None] = {}
+        for rule in self.rules:
+            seen.setdefault(rule.group, None)
+        seen.setdefault(TYPE_GROUP, None)
+        seen.setdefault(FALLBACK_GROUP, None)
+        return list(seen)
+
+    def group_for(self, category: str) -> str:
+        return self.groups.get(category, FALLBACK_GROUP)
 
     def classify(self, name_key: str, item_type: str) -> tuple[str, str]:
         """Returnera (kategori, källa)."""
@@ -86,10 +118,13 @@ def load_ruleset(path: Path | None = None) -> Ruleset:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
     fallback = str(data.get("fallback") or "Okategoriserat")
+    version = int(data.get("version") or 1)
     rules: list[Rule] = []
     for entry in data.get("categories") or []:
         if not isinstance(entry, dict) or not entry.get("name"):
             raise RuleError(f"Varje kategori måste ha ett 'name': {entry!r}")
+        if version >= 2 and not entry.get("group"):
+            raise RuleError(f"Kategorin {entry['name']!r} saknar 'group'")
         patterns: list[re.Pattern[str]] = []
         for matcher in entry.get("match") or []:
             if isinstance(matcher, str):
@@ -101,8 +136,14 @@ def load_ruleset(path: Path | None = None) -> Ruleset:
                     f"Ogiltig regel i {entry['name']}: {matcher!r} "
                     "(förväntar en sträng eller {re: ...})"
                 )
-        rules.append(Rule(str(entry["name"]), tuple(patterns)))
-    return Ruleset(tuple(rules), fallback)
+        rules.append(
+            Rule(
+                str(entry["name"]),
+                str(entry.get("group") or TYPE_GROUP),
+                tuple(patterns),
+            )
+        )
+    return Ruleset(tuple(rules), fallback, version)
 
 
 def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> dict[str, int]:
@@ -110,7 +151,8 @@ def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> di
     ruleset = ruleset or load_ruleset()
     manual = store.overrides(conn)
 
-    updates: list[tuple[str, str, int]] = []
+    groups = ruleset.groups
+    updates: list[tuple[str, str, str, int]] = []
     counts = {"total": 0, "override": 0, "rule": 0, "type": 0, "fallback": 0}
     for row in conn.execute("SELECT id, name_key, item_type FROM items"):
         counts["total"] += 1
@@ -123,7 +165,7 @@ def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> di
         else:
             category, source = ruleset.classify(name, item_type)
         counts[source] = counts.get(source, 0) + 1
-        updates.append((category, source, row["id"]))
+        updates.append((category, groups.get(category, FALLBACK_GROUP), source, row["id"]))
 
     store.apply_categories(conn, updates)
     return counts
