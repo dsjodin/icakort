@@ -66,6 +66,7 @@ def sync(
                 max_receipts=max_receipts or None,
                 refresh=refresh,
                 progress=_echo,
+                owner_key=token.actor_key,
             )
     except KivraError as exc:
         typer.secho(str(exc), fg=typer.colors.RED, err=True)
@@ -152,6 +153,37 @@ def unset_category(name: str) -> None:
     store.clear_override(conn, key)
     categorize_mod.recategorize(conn)
     _echo(f"Override borttagen för '{key}'")
+
+
+@app.command("assign-owner")
+def assign_owner(
+    name: str = typer.Argument(..., help="Namn att visa för kontot."),
+    key: Optional[str] = typer.Option(
+        None, "--key", help="Kivra actor_key. Default: kontot i sparad token."
+    ),
+) -> None:
+    """Tillskriv kvitton som saknar ägare till ett konto.
+
+    För historik som hämtats innan ägare började sparas. Kör den medan rätt
+    konto ligger i data/token.json -- kvitton med en ägare rörs aldrig.
+    """
+    from .kivra.auth import load_token
+
+    owner_key = key
+    if owner_key is None:
+        token = load_token()
+        if token is None:
+            typer.secho(
+                "Ingen sparad token. Logga in först, eller ange --key.",
+                fg=typer.colors.RED,
+                err=True,
+            )
+            raise typer.Exit(1)
+        owner_key = token.actor_key
+
+    conn = store.connect()
+    changed = store.assign_owner(conn, owner_key, name)
+    _echo(f"{changed} kvitton utan ägare tillskrivna {name}.")
 
 
 @app.command()

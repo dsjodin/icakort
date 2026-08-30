@@ -28,6 +28,12 @@ query Receipts($search: String, $limit: Int, $offset: Int) {
       store {
         name
       }
+      accessInfo {
+        owner {
+          isMe
+          name
+        }
+      }
     }
   }
 }

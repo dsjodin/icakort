@@ -23,6 +23,8 @@ CREATE TABLE IF NOT EXISTS receipts (
     total_ore     INTEGER,
     item_sum_ore  INTEGER,
     raw_path      TEXT,
+    owner_key     TEXT,
+    owner_name    TEXT,
     fetched_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -64,6 +66,24 @@ CREATE TABLE IF NOT EXISTS meta (
 """
 
 
+# Kolumner som tillkommit efter att databaser börjat användas skarpt.
+# CREATE TABLE IF NOT EXISTS rör inte en tabell som redan finns, så de måste
+# läggas till explicit.
+_MIGRATIONS = (
+    ("receipts", "owner_key", "TEXT"),
+    ("receipts", "owner_name", "TEXT"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Lägg till kolumner som saknas. Additivt -- ingen data rörs."""
+    for table, column, ddl in _MIGRATIONS:
+        have = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+    conn.commit()
+
+
 def connect(path: Path | None = None, same_thread: bool = True) -> sqlite3.Connection:
     """Öppna databasen.
 
@@ -75,6 +95,7 @@ def connect(path: Path | None = None, same_thread: bool = True) -> sqlite3.Conne
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -82,22 +103,36 @@ def known_receipt_keys(conn: sqlite3.Connection) -> set[str]:
     return {row["key"] for row in conn.execute("SELECT key FROM receipts")}
 
 
-def save_receipt(conn: sqlite3.Connection, receipt: Receipt, raw_path: str | None = None) -> None:
-    """Skriv kvitto + rader. Raderna byggs alltid om från grunden."""
+def save_receipt(
+    conn: sqlite3.Connection,
+    receipt: Receipt,
+    raw_path: str | None = None,
+    owner_key: str | None = None,
+    owner_name: str | None = None,
+) -> None:
+    """Skriv kvitto + rader. Raderna byggs alltid om från grunden.
+
+    Ägaren sätts bara när den är känd. COALESCE i upserten är inte kosmetik:
+    reparse kör utan token och skickar ingen ägare, så utan den hade en
+    omtolkning nollställt vem som köpt vad -- och det går inte att återskapa,
+    eftersom rådatan inte innehåller vilket Kivra-konto den hämtades ur.
+    """
     import json
 
     conn.execute(
         """
         INSERT INTO receipts (key, purchase_date, store_name, store_id, total_ore,
-                              item_sum_ore, raw_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+                              item_sum_ore, raw_path, owner_key, owner_name)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(key) DO UPDATE SET
             purchase_date = excluded.purchase_date,
             store_name    = excluded.store_name,
             store_id      = excluded.store_id,
             total_ore     = excluded.total_ore,
             item_sum_ore  = excluded.item_sum_ore,
-            raw_path      = excluded.raw_path
+            raw_path      = excluded.raw_path,
+            owner_key     = COALESCE(excluded.owner_key,  receipts.owner_key),
+            owner_name    = COALESCE(excluded.owner_name, receipts.owner_name)
         """,
         (
             receipt.key,
@@ -107,6 +142,8 @@ def save_receipt(conn: sqlite3.Connection, receipt: Receipt, raw_path: str | Non
             receipt.total_ore,
             receipt.item_sum_ore,
             raw_path,
+            owner_key,
+            owner_name,
         ),
     )
     conn.execute("DELETE FROM items WHERE receipt_key = ?", (receipt.key,))
@@ -138,6 +175,16 @@ def save_receipt(conn: sqlite3.Connection, receipt: Receipt, raw_path: str | Non
         ],
     )
     conn.commit()
+
+
+def assign_owner(conn: sqlite3.Connection, owner_key: str, owner_name: str) -> int:
+    """Tillskriv kvitton som saknar ägare. Rör aldrig en befintlig attribution."""
+    cursor = conn.execute(
+        "UPDATE receipts SET owner_key = ?, owner_name = ? WHERE owner_key IS NULL",
+        (owner_key, owner_name),
+    )
+    conn.commit()
+    return cursor.rowcount
 
 
 def set_override(conn: sqlite3.Connection, name_key: str, category: str) -> None:

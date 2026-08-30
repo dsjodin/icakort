@@ -26,6 +26,7 @@ from .. import jobs, stats, store, sync as sync_mod
 from ..kivra import auth as kivra_auth
 from ..kivra.client import KivraClient
 from ..normalize import name_key as make_name_key
+from .owner import router as owner_router
 from .security import BasicAuthMiddleware
 
 BASE_DIR = Path(__file__).parent
@@ -34,6 +35,7 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="icakort", docs_url=None, redoc_url=None)
 app.add_middleware(BasicAuthMiddleware)
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
+app.include_router(owner_router)
 
 
 def get_conn():
@@ -95,6 +97,7 @@ def _run_sync(job: jobs.Job, token: kivra_auth.Token, request: SyncRequest) -> d
                 store_filter=None if request.all_stores else "ica",
                 max_receipts=request.max_receipts or None,
                 progress=lambda message: jobs.log(job, message.strip()),
+                owner_key=token.actor_key,
             )
         counts = categorize_mod.recategorize(conn)
         jobs.log(job, str(result))

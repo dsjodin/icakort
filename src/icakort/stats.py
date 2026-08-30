@@ -20,6 +20,7 @@ class Filters:
     date_to: str | None = None
     store: str | None = None
     category: str | None = None
+    owner: str | None = None
 
     def where(self, alias_receipt: str = "r", alias_item: str = "i") -> tuple[str, list]:
         clauses: list[str] = []
@@ -36,6 +37,9 @@ class Filters:
         if self.category:
             clauses.append(f"{alias_item}.category = ?")
             params.append(self.category)
+        if self.owner:
+            clauses.append(f"{alias_receipt}.owner_key = ?")
+            params.append(self.owner)
         return (" AND ".join(clauses) if clauses else "1=1"), params
 
 
@@ -183,6 +187,44 @@ def price_history(conn: sqlite3.Connection, name_key: str) -> list[dict]:
         ORDER BY r.purchase_date
         """,
         [name_key],
+    )
+
+
+def by_owner(conn: sqlite3.Connection, filters: Filters | None = None) -> list[dict]:
+    """Utgifter per konto. Används bara av den dolda vyn."""
+    filters = filters or Filters()
+    where, params = filters.where()
+    return _rows(
+        conn,
+        f"""
+        SELECT COALESCE(r.owner_name, r.owner_key, 'Okänt konto') AS owner,
+               r.owner_key                                        AS owner_key,
+               SUM(i.line_total_ore)                              AS total_ore,
+               COUNT(DISTINCT r.key)                              AS receipts
+        {_JOIN}
+        WHERE {where}
+        GROUP BY r.owner_key
+        ORDER BY total_ore DESC
+        """,
+        params,
+    )
+
+
+def owner_by_month(conn: sqlite3.Connection, filters: Filters | None = None) -> list[dict]:
+    filters = filters or Filters()
+    where, params = filters.where()
+    return _rows(
+        conn,
+        f"""
+        SELECT substr(r.purchase_date, 1, 7)                      AS month,
+               COALESCE(r.owner_name, r.owner_key, 'Okänt konto') AS owner,
+               SUM(i.line_total_ore)                              AS total_ore
+        {_JOIN}
+        WHERE {where} AND r.purchase_date IS NOT NULL
+        GROUP BY month, r.owner_key
+        ORDER BY month
+        """,
+        params,
     )
 
 

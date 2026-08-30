@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Konton</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="page-head">
+    <h1>Per konto</h1>
+    <p class="sub" id="sub">Laddar…</p>
+  </header>
+
+  <main>
+    <section class="kpis" id="owner-kpis" aria-label="Per konto"></section>
+
+    <section class="card">
+      <h2>Fördelning över tid</h2>
+      <p class="sub">Utgifter per kalendermånad och konto.</p>
+      <div class="viz-root" id="chart-owner-months"></div>
+    </section>
+
+    <section class="card">
+      <h2>Största varor</h2>
+      <div class="toolbar" id="owner-tabs" role="group" aria-label="Konto"></div>
+      <div id="table-owner-items"></div>
+    </section>
+  </main>
+
+  <script src="/static/charts.js"></script>
+  <script>
+  /* Inline, inte en fil under /static/: hela vyn ska finnas bara bakom
+     den hemliga sökvägen. */
+  (function () {
+    "use strict";
+    var SECRET = {{ secret | tojson }};
+    var MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun",
+                  "jul", "aug", "sep", "okt", "nov", "dec"];
+
+    function monthLabel(month, index) {
+      var parts = String(month).split("-");
+      var name = MONTHS[parseInt(parts[1], 10) - 1] || month;
+      return (index === 0 || parts[1] === "01") ? name + " " + parts[0].slice(2) : name;
+    }
+
+    function text(tag, value, className) {
+      var node = document.createElement(tag);
+      node.textContent = value;
+      if (className) node.className = className;
+      return node;
+    }
+
+    function render(data) {
+      var owners = data.by_owner;
+      document.getElementById("sub").textContent =
+        "Hushållet: " + Charts.formatKr(data.household_ore, 2) +
+        (data.unassigned ? " · " + data.unassigned + " kvitton utan konto" : "");
+
+      var kpis = document.getElementById("owner-kpis");
+      kpis.replaceChildren();
+      owners.forEach(function (row, i) {
+        var tile = document.createElement("div");
+        tile.className = "tile";
+        var share = data.household_ore
+          ? (row.total_ore / data.household_ore * 100).toLocaleString("sv-SE",
+              { maximumFractionDigits: 1 }) + " % av hushållet" : "";
+        tile.appendChild(text("span", row.owner, "tile-label"));
+        tile.appendChild(text("span", Charts.formatKr(row.total_ore, 2), "tile-value"));
+        tile.appendChild(text("span", row.receipts + " kvitton · " + share, "tile-label"));
+        kpis.appendChild(tile);
+      });
+
+      var months = [];
+      var cells = {};
+      data.by_month.forEach(function (row) {
+        if (months.indexOf(row.month) === -1) months.push(row.month);
+        cells[row.month + "|" + row.owner] = row.total_ore;
+      });
+      months.sort();
+
+      var series = owners.map(function (row, i) {
+        return {
+          name: row.owner,
+          color: Charts.token("--series-" + (i + 1)),
+          values: months.map(function (m) { return cells[m + "|" + row.owner] || 0; })
+        };
+      });
+      Charts.stackedColumns(document.getElementById("chart-owner-months"),
+                            months.map(monthLabel), series);
+
+      var tabs = document.getElementById("owner-tabs");
+      tabs.replaceChildren();
+      owners.forEach(function (row, i) {
+        var button = document.createElement("button");
+        button.type = "button";
+        button.textContent = row.owner;
+        if (i === 0) button.className = "is-active";
+        button.addEventListener("click", function () {
+          tabs.querySelectorAll("button").forEach(function (b) {
+            b.classList.toggle("is-active", b === button);
+          });
+          loadItems(row.owner_key);
+        });
+        tabs.appendChild(button);
+      });
+      if (owners.length) loadItems(owners[0].owner_key);
+    }
+
+    function loadItems(ownerKey) {
+      fetch("/api/o/" + encodeURIComponent(SECRET) + "/items?owner=" +
+            encodeURIComponent(ownerKey || ""))
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          var box = document.getElementById("table-owner-items");
+          box.replaceChildren();
+          if (!data.items.length) {
+            box.appendChild(text("p", "Inga varor för det kontot.", "empty"));
+            return;
+          }
+          var table = document.createElement("table");
+          var head = document.createElement("tr");
+          ["Vara", "Kategori", "Gånger", "Totalt"].forEach(function (title, i) {
+            head.appendChild(text("th", title, i > 1 ? "num" : ""));
+          });
+          table.appendChild(document.createElement("thead")).appendChild(head);
+          var body = document.createElement("tbody");
+          data.items.forEach(function (row) {
+            var tr = document.createElement("tr");
+            tr.appendChild(text("td", row.name));
+            tr.appendChild(text("td", row.category));
+            tr.appendChild(text("td", String(row.times), "num"));
+            tr.appendChild(text("td", Charts.formatKr(row.total_ore, 2), "num"));
+            body.appendChild(tr);
+          });
+          table.appendChild(body);
+          box.appendChild(table);
+        });
+    }
+
+    fetch("/api/o/" + encodeURIComponent(SECRET) + "/summary")
+      .then(function (r) { return r.json(); })
+      .then(render);
+  })();
+  </script>
+</body>
+</html>

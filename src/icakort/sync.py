@@ -49,12 +49,16 @@ def sync(
     max_receipts: int | None = None,
     refresh: bool = False,
     progress=None,
+    owner_key: str | None = None,
 ) -> SyncResult:
     """Synka kvitton till databasen.
 
     store_filter: delsträng som butiksnamnet måste innehålla (skiftlägesokänsligt).
     None hämtar alla kvitton i Kivra-inkorgen.
     refresh: hämta om kvitton som redan finns lokalt.
+    owner_key: kontot synken körs med, sparas per kvitto. Måste sättas vid
+    hämtning -- rådatan säger ingenting om vilken inkorg kvittot kom ur, så
+    en attribution som inte skrivs ner nu går inte att få tillbaka.
     """
     result = SyncResult()
     known = store.known_receipt_keys(conn)
@@ -88,7 +92,13 @@ def sync(
         )
 
         receipt = normalize_receipt(raw, entry)
-        store.save_receipt(conn, receipt, raw_path=str(path))
+        store.save_receipt(
+            conn,
+            receipt,
+            raw_path=str(path),
+            owner_key=owner_key,
+            owner_name=receipt.owner_name or owner_key,
+        )
         result.fetched += 1
         if receipt.looks_unparsed:
             result.unparsed += 1

@@ -136,6 +136,9 @@ class Receipt:
     store_id: str | None
     total_ore: int | None
     items: list[Item]
+    # Kontot kvittot hämtades ur, enligt Kivras listning. Finns bara vid synk
+    # -- rådatan på disk säger ingenting om vilken inkorg den kom från.
+    owner_name: str | None = None
 
     @property
     def item_sum_ore(self) -> int:
@@ -332,6 +335,9 @@ def normalize_receipt(raw: dict, list_entry: dict | None = None) -> Receipt:
     if total is None and list_entry:
         total = parse_money((list_entry.get("totalAmount") or {}).get("formatted"))
 
+    owner = ((list_entry or {}).get("accessInfo") or {}).get("owner") or {}
+    owner_name = owner.get("name")
+
     purchase_date = header.get("isoDate") or (list_entry or {}).get("purchaseDate")
     store_name = ((list_entry or {}).get("store") or {}).get("name") or (
         raw.get("sender") or {}
@@ -344,4 +350,5 @@ def normalize_receipt(raw: dict, list_entry: dict | None = None) -> Receipt:
         store_id=_store_id(content.get("storeInformation")),
         total_ore=total,
         items=items,
+        owner_name=str(owner_name).strip() if owner_name else None,
     )
