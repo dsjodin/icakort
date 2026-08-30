@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS receipts (
     raw_path      TEXT,
     owner_key     TEXT,
     owner_name    TEXT,
+    excluded      INTEGER NOT NULL DEFAULT 0,
     fetched_at    TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -44,14 +45,10 @@ CREATE TABLE IF NOT EXISTS items (
     deposit_ore     INTEGER NOT NULL DEFAULT 0,
     line_total_ore  INTEGER NOT NULL DEFAULT 0,
     identifiers     TEXT,
+    excluded        INTEGER NOT NULL DEFAULT 0,
     category        TEXT,
     category_source TEXT
 );
-
-CREATE INDEX IF NOT EXISTS idx_items_receipt ON items(receipt_key);
-CREATE INDEX IF NOT EXISTS idx_items_name_key ON items(name_key);
-CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
-CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(purchase_date);
 
 CREATE TABLE IF NOT EXISTS overrides (
     name_key   TEXT PRIMARY KEY,
@@ -65,14 +62,21 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 """
 
-
 # Kolumner som tillkommit efter att databaser börjat användas skarpt.
 # CREATE TABLE IF NOT EXISTS rör inte en tabell som redan finns, så de måste
 # läggas till explicit.
 _MIGRATIONS = (
     ("receipts", "owner_key", "TEXT"),
     ("receipts", "owner_name", "TEXT"),
+    ("receipts", "excluded", "INTEGER NOT NULL DEFAULT 0"),
+    ("items", "excluded", "INTEGER NOT NULL DEFAULT 0"),
 )
+
+# Indexen skapas efter migreringen: ett index på owner_key kan inte skapas
+# innan ALTER TABLE lagt till kolumnen.
+INDEXES = """
+""" + "\n".join(['CREATE INDEX IF NOT EXISTS idx_items_receipt ON items(receipt_key);', 'CREATE INDEX IF NOT EXISTS idx_items_name_key ON items(name_key);', 'CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);', 'CREATE INDEX IF NOT EXISTS idx_receipts_date ON receipts(purchase_date);', 'CREATE INDEX IF NOT EXISTS idx_receipts_owner ON receipts(owner_key);']) + """
+"""
 
 
 def _migrate(conn: sqlite3.Connection) -> None:
@@ -82,7 +86,6 @@ def _migrate(conn: sqlite3.Connection) -> None:
         if column not in have:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
     conn.commit()
-
 
 def connect(path: Path | None = None, same_thread: bool = True) -> sqlite3.Connection:
     """Öppna databasen.
@@ -96,12 +99,11 @@ def connect(path: Path | None = None, same_thread: bool = True) -> sqlite3.Conne
     conn.execute("PRAGMA foreign_keys = ON")
     conn.executescript(SCHEMA)
     _migrate(conn)
+    conn.executescript(INDEXES)
     return conn
-
 
 def known_receipt_keys(conn: sqlite3.Connection) -> set[str]:
     return {row["key"] for row in conn.execute("SELECT key FROM receipts")}
-
 
 def save_receipt(
     conn: sqlite3.Connection,
@@ -146,13 +148,22 @@ def save_receipt(
             owner_name,
         ),
     )
+    # Raderna byggs om från grunden, så undantagna varor måste minnas över en
+    # omtolkning -- annars dyker en dold present upp igen efter "Tolka om".
+    excluded_rows = {
+        row["name_key"]
+        for row in conn.execute(
+            "SELECT name_key FROM items WHERE receipt_key = ? AND excluded = 1",
+            (receipt.key,),
+        )
+    }
     conn.execute("DELETE FROM items WHERE receipt_key = ?", (receipt.key,))
     conn.executemany(
         """
         INSERT INTO items (receipt_key, line_no, item_type, section, name, name_key,
                            quantity, unit, unit_price_ore, amount_ore, discount_ore,
-                           deposit_ore, line_total_ore, identifiers)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           deposit_ore, line_total_ore, identifiers, excluded)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
             (
@@ -170,12 +181,12 @@ def save_receipt(
                 item.deposit_ore,
                 item.line_total_ore,
                 json.dumps(item.identifiers, ensure_ascii=False),
+                1 if item.name_key in excluded_rows else 0,
             )
             for item in receipt.items
         ],
     )
     conn.commit()
-
 
 def assign_owner(conn: sqlite3.Connection, owner_key: str, owner_name: str) -> int:
     """Tillskriv kvitton som saknar ägare. Rör aldrig en befintlig attribution."""
@@ -185,7 +196,6 @@ def assign_owner(conn: sqlite3.Connection, owner_key: str, owner_name: str) -> i
     )
     conn.commit()
     return cursor.rowcount
-
 
 def set_override(conn: sqlite3.Connection, name_key: str, category: str) -> None:
     conn.execute(
@@ -197,17 +207,60 @@ def set_override(conn: sqlite3.Connection, name_key: str, category: str) -> None
     )
     conn.commit()
 
+def set_overrides_bulk(
+    conn: sqlite3.Connection, name_keys: list[str], category: str
+) -> int:
+    """Sätt samma kategori på många varor. En commit, inte en per vara."""
+    rows = [(key, category) for key in name_keys if key]
+    conn.executemany(
+        """
+        INSERT INTO overrides (name_key, category) VALUES (?, ?)
+        ON CONFLICT(name_key) DO UPDATE SET category = excluded.category
+        """,
+        rows,
+    )
+    conn.commit()
+    return len(rows)
+
+def set_excluded(
+    conn: sqlite3.Connection, name_key: str | None = None,
+    receipt_key: str | None = None, excluded: bool = True,
+) -> int:
+    """Undanta en vara eller ett helt kvitto ur standardvyerna."""
+    flag = 1 if excluded else 0
+    if name_key:
+        cursor = conn.execute(
+            "UPDATE items SET excluded = ? WHERE name_key = ?", (flag, name_key)
+        )
+    elif receipt_key:
+        cursor = conn.execute(
+            "UPDATE receipts SET excluded = ? WHERE key = ?", (flag, receipt_key)
+        )
+    else:
+        return 0
+    conn.commit()
+    return cursor.rowcount
+
+def excluded_items(conn: sqlite3.Connection) -> list[sqlite3.Row]:
+    return list(
+        conn.execute(
+            """
+            SELECT name_key, MIN(name) AS name, COUNT(*) AS times,
+                   SUM(line_total_ore) AS total_ore
+            FROM items WHERE excluded = 1
+            GROUP BY name_key ORDER BY total_ore DESC
+            """
+        )
+    )
 
 def clear_override(conn: sqlite3.Connection, name_key: str) -> None:
     conn.execute("DELETE FROM overrides WHERE name_key = ?", (name_key,))
     conn.commit()
 
-
 def overrides(conn: sqlite3.Connection) -> dict[str, str]:
     return {
         row["name_key"]: row["category"] for row in conn.execute("SELECT * FROM overrides")
     }
-
 
 def apply_categories(conn: sqlite3.Connection, updates: Iterable[tuple[str, str, int]]) -> int:
     """updates: (kategori, källa, item-id)."""

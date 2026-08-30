@@ -35,7 +35,6 @@
      den hemliga sökvägen. */
   (function () {
     "use strict";
-    var SECRET = {{ secret | tojson }};
     var MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun",
                   "jul", "aug", "sep", "okt", "nov", "dec"];
 
@@ -115,8 +114,7 @@
     }
 
     function loadItems(ownerKey) {
-      fetch("/api/o/" + encodeURIComponent(SECRET) + "/items?owner=" +
-            encodeURIComponent(ownerKey || ""))
+      fetch("/api/o/items?owner=" + encodeURIComponent(ownerKey || ""))
         .then(function (r) { return r.json(); })
         .then(function (data) {
           var box = document.getElementById("table-owner-items");
@@ -127,8 +125,8 @@
           }
           var table = document.createElement("table");
           var head = document.createElement("tr");
-          ["Vara", "Kategori", "Gånger", "Totalt"].forEach(function (title, i) {
-            head.appendChild(text("th", title, i > 1 ? "num" : ""));
+          ["Vara", "Kategori", "Gånger", "Totalt", "Dold"].forEach(function (title, i) {
+            head.appendChild(text("th", title, i === 2 || i === 3 ? "num" : ""));
           });
           table.appendChild(document.createElement("thead")).appendChild(head);
           var body = document.createElement("tbody");
@@ -138,6 +136,23 @@
             tr.appendChild(text("td", row.category));
             tr.appendChild(text("td", String(row.times), "num"));
             tr.appendChild(text("td", Charts.formatKr(row.total_ore, 2), "num"));
+
+            // Undantagna varor försvinner ur huvudvyn men syns kvar här.
+            var cell = document.createElement("td");
+            var box = document.createElement("input");
+            box.type = "checkbox";
+            box.checked = !!row.excluded;
+            box.setAttribute("aria-label", "Dölj " + row.name + " ur huvudvyn");
+            box.addEventListener("change", function () {
+              box.disabled = true;
+              fetch("/api/o/exclude", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name_key: row.name_key, excluded: box.checked })
+              }).then(function () { box.disabled = false; });
+            });
+            cell.appendChild(box);
+            tr.appendChild(cell);
             body.appendChild(tr);
           });
           table.appendChild(body);
@@ -145,7 +160,7 @@
         });
     }
 
-    fetch("/api/o/" + encodeURIComponent(SECRET) + "/summary")
+    fetch("/api/o/summary")
       .then(function (r) { return r.json(); })
       .then(render);
   })();

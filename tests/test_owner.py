@@ -125,10 +125,15 @@ def test_owner_name_comes_from_the_kivra_listing(raw_receipt):
 # ---------------------------------------------------------------------------
 
 
+def _unlock(client, key=SECRET):
+    return client.post("/api/unlock", json={"key": key})
+
+
 def test_hidden_by_default(client):
     """Utan nyckel i miljön ska vyn inte finnas alls."""
-    assert client.get(f"/o/{SECRET}").status_code == 404
-    assert client.get(f"/api/o/{SECRET}/summary").status_code == 404
+    assert client.get("/o").status_code == 404
+    assert client.get("/api/o/summary").status_code == 404
+    assert _unlock(client).status_code == 404
 
 
 def test_a_wrong_key_is_indistinguishable_from_a_dead_link(client, monkeypatch):
@@ -136,30 +141,43 @@ def test_a_wrong_key_is_indistinguishable_from_a_dead_link(client, monkeypatch):
     monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
 
     missing = client.get("/finns-inte-alls")
-    wrong = client.get("/o/fel-gissning")
-    unset_route = client.get("/api/o/fel-gissning/summary")
+    locked = client.get("/o")
+    wrong = _unlock(client, "fel-gissning")
 
-    assert missing.status_code == wrong.status_code == unset_route.status_code == 404
-    assert missing.content == wrong.content == unset_route.content
+    assert missing.status_code == locked.status_code == wrong.status_code == 404
+    assert missing.content == locked.content == wrong.content
 
 
-def test_the_right_key_opens_the_view(client, monkeypatch):
+def test_unlocking_sets_a_cookie_and_opens_the_view(client, monkeypatch):
     monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
 
-    page = client.get(f"/o/{SECRET}")
+    response = _unlock(client)
+    assert response.status_code == 200
+    cookie = response.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "strict" in cookie.lower()
+
+    page = client.get("/o")
     assert page.status_code == 200
     assert "Per konto" in page.text
 
-    data = client.get(f"/api/o/{SECRET}/summary").json()
-    # Lika stora summor, så inbördes ordning är oavgjord -- jämför som mängd.
+    data = client.get("/api/o/summary").json()
     assert {row["owner"] for row in data["by_owner"]} == {"Alex", "Robin"}
     assert data["household_ore"] == 17943 * 2
-    assert data["unassigned"] == 0
+
+
+def test_the_key_never_appears_in_a_url(client, monkeypatch):
+    """Nyckeln i sökvägen skulle hamna i historiken -- den vägen ska vara borta."""
+    monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
+    _unlock(client)
+
+    assert client.get(f"/o/{SECRET}").status_code == 404
+    assert client.get(f"/api/o/{SECRET}/summary").status_code == 404
 
 
 def test_items_can_be_filtered_per_owner(client, monkeypatch):
     monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
-    data = client.get(f"/api/o/{SECRET}/items", params={"owner": "konto-a"}).json()
+    _unlock(client)
+    data = client.get("/api/o/items", params={"owner": "konto-a"}).json()
     assert data["items"]
     assert all(row["total_ore"] <= 17943 for row in data["items"])
 
@@ -167,12 +185,17 @@ def test_items_can_be_filtered_per_owner(client, monkeypatch):
 def test_the_ordinary_dashboard_never_mentions_owners(client, monkeypatch):
     """Huvudvyn får inte läcka attributionen, ens när nyckeln är satt."""
     monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
+    _unlock(client)
 
     for path in ("/api/filters", "/api/overview", "/api/items", "/api/quality"):
         body = client.get(path).text
         assert "owner" not in body.lower(), path
 
-    assert "/o/" not in client.get("/").text
+    # Sidan får inte länka till den dolda vyn. ("/o" ensamt duger inte som
+    # test -- det matchar </option> i markupen.)
+    body = client.get("/").text
+    assert 'href="/o"' not in body
+    assert "/api/o/" not in body
 
 
 def test_the_hidden_view_still_needs_the_password(client, monkeypatch):
@@ -180,5 +203,63 @@ def test_the_hidden_view_still_needs_the_password(client, monkeypatch):
     monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
     monkeypatch.setenv("ICAKORT_PASSWORD", "hemligt")
 
-    assert client.get(f"/o/{SECRET}").status_code == 401
-    assert client.get(f"/o/{SECRET}", auth=("icakort", "hemligt")).status_code == 200
+    assert client.post("/api/unlock", json={"key": SECRET}).status_code == 401
+
+    client.post("/api/unlock", json={"key": SECRET}, auth=("icakort", "hemligt"))
+    assert client.get("/o").status_code == 401
+    assert client.get("/o", auth=("icakort", "hemligt")).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# Undantagna varor
+# ---------------------------------------------------------------------------
+
+
+def test_an_excluded_item_disappears_from_every_ordinary_view(client, monkeypatch):
+    """En dold present får inte synas någonstans i huvudvyn -- inte heller
+    som ett namn i kvalitetslistan eller som en punkt i priskurvan."""
+    monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
+    _unlock(client)
+
+    before = client.get("/api/overview").json()["summary"]["total_ore"]
+    assert "PRYLBURK XYZ" in client.get("/api/items").text
+
+    assert client.post(
+        "/api/o/exclude", json={"name_key": "prylburk xyz", "excluded": True}
+    ).status_code == 200
+
+    assert "PRYLBURK XYZ" not in client.get("/api/items").text
+    assert "PRYLBURK XYZ" not in client.get("/api/quality").text
+    assert client.get("/api/overview").json()["summary"]["total_ore"] < before
+    assert client.get("/api/price", params={"name_key": "prylburk xyz"}).json()["points"] == []
+
+    # ... men den finns kvar bakom nyckeln.
+    hidden = client.get("/api/o/summary").json()
+    assert [row["name_key"] for row in hidden["excluded"]] == ["prylburk xyz"]
+
+
+def test_excluding_survives_a_reparse(client, monkeypatch, tmp_path, raw_receipt):
+    """En omtolkning bygger om items -- undantaget får inte tvättas bort."""
+    import json
+
+    monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
+    _unlock(client)
+    raw = tmp_path / "raw"
+    raw.mkdir(exist_ok=True)
+    payload = json.loads(json.dumps(raw_receipt))
+    payload["receipt"]["key"] = "r-a"
+    payload["list_entry"]["key"] = "r-a"
+    (raw / "r-a.json").write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    client.post("/api/o/exclude", json={"name_key": "prylburk xyz", "excluded": True})
+    sync_mod.reparse(store.connect(tmp_path / "icakort.db"))
+
+    assert "PRYLBURK XYZ" not in client.get("/api/items").text
+
+
+def test_exclusion_can_be_undone(client, monkeypatch):
+    monkeypatch.setenv("ICAKORT_OWNER_KEY", SECRET)
+    _unlock(client)
+    client.post("/api/o/exclude", json={"name_key": "prylburk xyz", "excluded": True})
+    client.post("/api/o/exclude", json={"name_key": "prylburk xyz", "excluded": False})
+    assert "PRYLBURK XYZ" in client.get("/api/items").text

@@ -222,6 +222,11 @@ def api_session() -> dict:
 # --------------------------------------------------------------------------
 
 
+class BulkOverrideRequest(BaseModel):
+    name_keys: list[str] = Field(min_length=1, max_length=5000)
+    category: str = Field(min_length=1)
+
+
 class OverrideRequest(BaseModel):
     name_key: str = Field(min_length=1)
     category: str = Field(min_length=1)
@@ -241,6 +246,50 @@ def api_set_override(
 def api_clear_override(name_key: str, conn: sqlite3.Connection = Depends(get_conn)) -> dict:
     store.clear_override(conn, name_key)
     return {"name_key": name_key, "counts": categorize_mod.recategorize(conn)}
+
+
+@app.post("/api/overrides/bulk")
+def api_bulk_overrides(
+    request: BulkOverrideRequest, conn: sqlite3.Connection = Depends(get_conn)
+) -> dict:
+    """Sätt kategori på många varor i ett svep."""
+    keys = [make_name_key(key) or key for key in request.name_keys]
+    changed = store.set_overrides_bulk(conn, keys, request.category)
+    counts = categorize_mod.recategorize(conn)
+    return {"changed": changed, "category": request.category, "counts": counts}
+
+
+@app.get("/api/uncategorized")
+def api_uncategorized(
+    search: Optional[str] = Query(None),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    return {
+        "items": [
+            dict(row) for row in categorize_mod.unknown_items(conn, limit, offset, search)
+        ],
+        "total": categorize_mod.unknown_total(conn, search),
+        "groups": categorize_mod.unknown_groups(conn) if not search and not offset else [],
+    }
+
+
+@app.get("/api/prices")
+def api_prices(
+    filters: stats.Filters = Depends(get_filters),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    return {
+        "index": stats.basket_index(conn, filters),
+        "changes": stats.price_changes(conn, filters),
+        "stores": stats.store_prices(conn, filters),
+    }
+
+
+@app.get("/priser", response_class=HTMLResponse)
+def prices_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "prices.html")
 
 
 @app.post("/api/categorize")

@@ -129,24 +129,100 @@ def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> di
     return counts
 
 
-def unknown_items(conn: sqlite3.Connection, limit: int = 40) -> list[sqlite3.Row]:
-    """Okategoriserade varor sorterade på hur mycket pengar de utgör."""
+def unknown_items(
+    conn: sqlite3.Connection,
+    limit: int = 40,
+    offset: int = 0,
+    search: str | None = None,
+) -> list[sqlite3.Row]:
+    """Okategoriserade varor sorterade på hur mycket pengar de utgör.
+
+    Undantagna varor utelämnas. Annars hade en dold present visat sitt namn
+    här, i huvudvyns kvalitetslista -- vilket vore hela poängen förlorad.
+    """
+    clauses = ["category_source = 'fallback'", "excluded = 0"]
+    params: list = []
+    if search:
+        clauses.append("(name_key LIKE ? OR name LIKE ?)")
+        needle = f"%{search.lower()}%"
+        params.extend([needle, f"%{search}%"])
+
     return list(
         conn.execute(
-            """
+            f"""
             SELECT name_key,
                    MIN(name)            AS example_name,
                    COUNT(*)             AS times,
                    SUM(line_total_ore)  AS total_ore
             FROM items
-            WHERE category_source = 'fallback'
+            WHERE {" AND ".join(clauses)}
             GROUP BY name_key
             ORDER BY total_ore DESC
-            LIMIT ?
+            LIMIT ? OFFSET ?
             """,
-            (limit,),
+            (*params, limit, offset),
         )
     )
+
+
+def unknown_total(conn: sqlite3.Connection, search: str | None = None) -> int:
+    """Antal distinkta okategoriserade varunamn, för pagineringen."""
+    clauses = ["category_source = 'fallback'", "excluded = 0"]
+    params: list = []
+    if search:
+        clauses.append("(name_key LIKE ? OR name LIKE ?)")
+        needle = f"%{search.lower()}%"
+        params.extend([needle, f"%{search}%"])
+    row = conn.execute(
+        f"SELECT COUNT(DISTINCT name_key) AS n FROM items WHERE {' AND '.join(clauses)}",
+        params,
+    ).fetchone()
+    return row["n"] or 0
+
+
+def unknown_groups(
+    conn: sqlite3.Connection,
+    limit: int = 25,
+    min_items: int = 2,
+    prefix_length: int = 4,
+) -> list[dict]:
+    """Gruppera okategoriserat på gemensamt ordprefix.
+
+    Att gruppera på första *ordet* fungerar dåligt på svenska: sammansättningar
+    skrivs ihop, så GRILLREMSA, GRILLKORV och GRILLKOL har inget gemensamt
+    förstaord trots att de uppenbart hör ihop. Ett teckenprefix fångar dem,
+    och eftersom huvudordet oftast står först i kvittonamnet blir grupperna
+    användbara: "gril" samlar grillsaker, "mjöl" mjölksorterna.
+
+    Grupperna är ett förslag, inte ett facit -- därför följer exempelnamn med
+    så valet kan synas efter innan det appliceras.
+    """
+    groups: dict[str, dict] = {}
+    for row in conn.execute(
+        """
+        SELECT name_key, MIN(name) AS example_name,
+               COUNT(*) AS times, SUM(line_total_ore) AS total_ore
+        FROM items
+        WHERE category_source = 'fallback' AND excluded = 0 AND name_key <> ''
+        GROUP BY name_key
+        """
+    ):
+        head = (row["name_key"] or "")[:prefix_length]
+        if len(head) < prefix_length:
+            continue
+        group = groups.setdefault(
+            head,
+            {"prefix": head, "name_keys": [], "examples": [], "times": 0, "total_ore": 0},
+        )
+        group["name_keys"].append(row["name_key"])
+        if len(group["examples"]) < 5:
+            group["examples"].append(row["example_name"])
+        group["times"] += row["times"]
+        group["total_ore"] += row["total_ore"] or 0
+
+    usable = [g for g in groups.values() if len(g["name_keys"]) >= min_items]
+    usable.sort(key=lambda g: g["total_ore"], reverse=True)
+    return usable[:limit]
 
 
 def coverage(conn: sqlite3.Connection) -> dict[str, float | int]:
@@ -160,7 +236,7 @@ def coverage(conn: sqlite3.Connection) -> dict[str, float | int]:
             COUNT(*) AS items,
             SUM(CASE WHEN category_source = 'fallback' THEN 1 ELSE 0 END) AS unknown_items
         FROM items
-        WHERE item_type IN ('product', 'return')
+        WHERE item_type IN ('product', 'return') AND excluded = 0
         """
     ).fetchone()
     total = row["total_ore"] or 0

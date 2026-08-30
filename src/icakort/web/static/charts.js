@@ -221,6 +221,7 @@
   /* ---------- Liggande staplar, en serie ---------- */
   function barsH(container, data, options) {
     options = options || {};
+    var fmt = options.format || formatKr;
     if (!data.length) return emptyState(container, options.empty || "Ingen data.");
     var ctx = prepare(container);
     var W = ctx.width;
@@ -276,12 +277,12 @@
         fill: token("--text-primary"), "font-size": 12
       });
       value.setAttribute("font-variant-numeric", "tabular-nums");
-      value.textContent = formatKr(d.value);
+      value.textContent = fmt(d.value);
       svg.appendChild(value);
 
       if (d.suffix) {
         var suffix = el("text", {
-          x: tipX, y: barY + barH / 2 + 4, dx: 8 + measure(formatKr(d.value)),
+          x: tipX, y: barY + barH / 2 + 4, dx: 10 + measure(fmt(d.value)),
           fill: token("--text-muted"), "font-size": 11
         });
         suffix.textContent = d.suffix;
@@ -293,7 +294,7 @@
       });
       function show() {
         ctx.tooltip.show(negative ? zeroX - w : zeroX + w, y + 4, d.label,
-          [{ value: formatKr(d.value, 2), name: d.note || d.suffix || "", color: color }]);
+          [{ value: fmt(d.value, 2), name: d.note || d.suffix || "", color: color }]);
       }
       hit.addEventListener("pointermove", show);
       hit.addEventListener("focus", show);
@@ -426,6 +427,7 @@
   /* ---------- Linjediagram med krysshår ---------- */
   function line(container, points, options) {
     options = options || {};
+    var fmt = options.format || formatKr;
     if (points.length < 2) {
       return emptyState(container, options.empty || "För få mätpunkter för en kurva.");
     }
@@ -438,10 +440,14 @@
 
     var values = points.map(function (p) { return p.value; });
     var max = Math.max.apply(null, values);
-    var ticks = niceTicks(max, 4);
+    // Ett index säger ingenting om avståndet till noll -- referensvärdet är
+    // dess egen nollpunkt. Utan options.min gäller vanlig nollbaslinje.
+    var floor = options.min === undefined ? 0 : options.min;
+    var ticks = niceTicks(max - floor, 4).map(function (v) { return v + floor; });
     var top = ticks[ticks.length - 1];
+    var span = top - floor || 1;
     var x = function (i) { return pad.left + (points.length === 1 ? plotW / 2 : (i / (points.length - 1)) * plotW); };
-    var y = function (v) { return pad.top + plotH - (v / top) * plotH; };
+    var y = function (v) { return pad.top + plotH - ((v - floor) / span) * plotH; };
     var color = token("--series-1");
     var surface = token("--surface-1");
 
@@ -449,13 +455,13 @@
     ticks.forEach(function (t) {
       svg.appendChild(el("line", {
         x1: pad.left, x2: W - pad.right, y1: y(t), y2: y(t),
-        stroke: token(t === 0 ? "--baseline" : "--gridline"), "stroke-width": 1
+        stroke: token(t === floor ? "--baseline" : "--gridline"), "stroke-width": 1
       }));
       var label = el("text", {
         x: pad.left - 8, y: y(t) + 4, "text-anchor": "end",
         fill: token("--text-muted"), "font-size": 11
       });
-      label.textContent = formatKr(t);
+      label.textContent = fmt(t);
       svg.appendChild(label);
     });
 
@@ -482,7 +488,7 @@
       x: x(points.length - 1) + 10, y: y(last.value) + 4,
       fill: token("--text-primary"), "font-size": 12, "font-weight": 600
     });
-    endLabel.textContent = formatKr(last.value, 2);
+    endLabel.textContent = fmt(last.value, 2);
     svg.appendChild(endLabel);
 
     [0, points.length - 1].forEach(function (i) {
@@ -516,7 +522,7 @@
       crosshair.setAttribute("x2", x(i));
       crosshair.setAttribute("visibility", "visible");
       ctx.tooltip.show(x(i), y(p.value), p.label, [
-        { value: formatKr(p.value, 2), name: p.note || (options.valueName || ""), color: color }
+        { value: fmt(p.value, 2), name: p.note || (options.valueName || ""), color: color }
       ]);
     }
     function hide() {
@@ -538,6 +544,7 @@
     stackedColumns: stackedColumns,
     line: line,
     formatKr: formatKr,
-    token: token
+    token: token,
+    niceTicks: niceTicks
   };
 })(window);

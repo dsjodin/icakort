@@ -286,3 +286,48 @@ button.rerun {
 }
 button.rerun:hover { border-color: var(--baseline); }
 button.rerun:disabled { opacity: 0.5; cursor: default; }
+
+.backlink { color: var(--text-secondary); text-decoration: none; font-size: 13px; }
+.backlink:hover { color: var(--text-primary); }
+
+/* ---------- Bulkkategorisering ---------- */
+
+.bulk { margin-top: 8px; }
+.bulk-groups { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 16px; }
+.bulk-chip {
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+  color: var(--text-secondary);
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.bulk-chip:hover { color: var(--text-primary); border-color: var(--baseline); }
+
+.bulk-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.bulk-tools input, .bulk-tools select, .bulk-tools button {
+  font: inherit;
+  font-size: 13px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.bulk-tools button { cursor: pointer; }
+.bulk-tools button:hover { border-color: var(--baseline); }
+.bulk-tools button.primary {
+  color: #fff;
+  background: var(--seq);
+  border-color: transparent;
+  font-weight: 600;
+}
+.bulk .table-scroll { max-height: 420px; overflow-y: auto; }

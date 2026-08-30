@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Priser</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="page-head">
+    <div class="head-row">
+      <div>
+        <h1>Priser</h1>
+        <p class="sub" id="sub">Laddar…</p>
+      </div>
+      <div class="session"><a class="backlink" href="/">← Översikt</a></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Er matprisindex</h2>
+      <p class="sub">
+        Startåret = 100. Bara varor ni köpt två år i rad jämförs, så ett byte till
+        en dyrare vara räknas inte som prisökning. Prisrelationerna vägs med
+        utgiften året innan.
+      </p>
+      <div class="viz-root" id="chart-index"></div>
+      <p class="note" id="index-note"></p>
+    </section>
+
+    <section class="card">
+      <h2>Största prisförändringar</h2>
+      <p class="sub">
+        Median styckpris i första halvan av perioden mot den sista, per vara och
+        enhet. Antalet köp står vid varje rad — en förändring byggd på tre köp
+        säger mindre än en byggd på trettio.
+      </p>
+      <div class="viz-root" id="chart-changes"></div>
+      <div class="legend" id="changes-legend"></div>
+      <details class="table-view">
+        <summary>Visa som tabell</summary>
+        <div id="table-changes"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <h2>Samma vara, olika butik</h2>
+      <p class="sub">
+        Jämförelser görs inom samma år. Utan den kontrollen hade inflation sett ut
+        som en butiksskillnad.
+      </p>
+      <div id="table-stores"></div>
+    </section>
+  </main>
+
+  <script src="/static/charts.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    function num(value, decimals) {
+      return Number(value).toLocaleString("sv-SE", {
+        minimumFractionDigits: decimals || 0, maximumFractionDigits: decimals || 0
+      });
+    }
+    function percent(share) {
+      return (share > 0 ? "+" : "") + num(share * 100, 1) + " %";
+    }
+    function text(tag, value, className) {
+      var node = document.createElement(tag);
+      node.textContent = value;
+      if (className) node.className = className;
+      return node;
+    }
+    function table(container, columns, rows) {
+      container.replaceChildren();
+      if (!rows.length) {
+        container.appendChild(text("p", "Inte tillräckligt med data än.", "empty"));
+        return;
+      }
+      var scroll = document.createElement("div");
+      scroll.className = "table-scroll";
+      var el = document.createElement("table");
+      var head = document.createElement("tr");
+      columns.forEach(function (col) { head.appendChild(text("th", col.title, col.num ? "num" : "")); });
+      el.appendChild(document.createElement("thead")).appendChild(head);
+      var body = document.createElement("tbody");
+      rows.forEach(function (row) {
+        var tr = document.createElement("tr");
+        columns.forEach(function (col) { tr.appendChild(text("td", col.value(row), col.num ? "num" : "")); });
+        body.appendChild(tr);
+      });
+      el.appendChild(body);
+      scroll.appendChild(el);
+      container.appendChild(scroll);
+    }
+
+    fetch("/api/prices").then(function (r) { return r.json(); }).then(function (data) {
+      /* --- Index: en serie över tid -> linje, en färg, ingen legend --- */
+      var index = data.index;
+      if (index.length >= 2) {
+        var last = index[index.length - 1];
+        document.getElementById("sub").textContent =
+          index[0].year + " – " + last.year + " · index " + num(last.index, 1) +
+          " (" + percent((last.index - 100) / 100) + " sedan " + index[0].year + ")";
+        Charts.line(document.getElementById("chart-index"), index.map(function (row) {
+          return { label: row.year, value: row.index, note: row.matched + " matchade varor" };
+        }), {
+          format: function (v, d) { return num(v, d ? 1 : 0); },
+          valueName: "index",
+          // Referensvärdet är indexets egen nollpunkt.
+          min: Math.min(100, Math.floor(Math.min.apply(null,
+                index.map(function (r) { return r.index; })) / 10) * 10)
+        });
+        document.getElementById("index-note").textContent =
+          "Antal matchade varor per år: " +
+          index.slice(1).map(function (r) { return r.year + ": " + r.matched; }).join(" · ");
+      } else {
+        document.getElementById("sub").textContent =
+          "För lite historik för ett index — det behövs två år med gemensamma varor.";
+      }
+
+      /* --- Förändringar: över/under en baslinje -> divergerande staplar --- */
+      var rises = Charts.token("--negative");   // dyrare = röd
+      var falls = Charts.token("--seq");        // billigare = blå
+      var changes = data.changes.slice(0, 18);
+      Charts.barsH(document.getElementById("chart-changes"), changes.map(function (row) {
+        return {
+          label: row.name,
+          value: row.change_share * 100,
+          color: row.change_share >= 0 ? rises : falls,
+          suffix: num(row.observations) + " köp",
+          note: Charts.formatKr(row.first_ore, 2) + " → " + Charts.formatKr(row.last_ore, 2)
+        };
+      }), { format: function (v) { return percent(v / 100); } });
+
+      var legend = document.getElementById("changes-legend");
+      legend.replaceChildren();
+      [["Dyrare", rises], ["Billigare", falls]].forEach(function (pair) {
+        var item = document.createElement("span");
+        item.className = "legend-item";
+        var swatch = document.createElement("span");
+        swatch.className = "legend-swatch";
+        swatch.style.background = pair[1];
+        item.appendChild(swatch);
+        item.appendChild(text("span", pair[0]));
+        legend.appendChild(item);
+      });
+
+      table(document.getElementById("table-changes"), [
+        { title: "Vara", value: function (r) { return r.name; } },
+        { title: "Enhet", value: function (r) { return r.unit || "–"; } },
+        { title: "Förr", num: true, value: function (r) { return Charts.formatKr(r.first_ore, 2); } },
+        { title: "Nu", num: true, value: function (r) { return Charts.formatKr(r.last_ore, 2); } },
+        { title: "Förändring", num: true, value: function (r) { return percent(r.change_share); } },
+        { title: "Köp", num: true, value: function (r) { return num(r.observations); } }
+      ], data.changes);
+
+      /* --- Butiker: många rader med långa namn -> tabell, inte diagram --- */
+      table(document.getElementById("table-stores"), [
+        { title: "Vara", value: function (r) { return r.name; } },
+        { title: "År", value: function (r) { return r.year; } },
+        { title: "Billigast", value: function (r) { return r.cheapest_store; } },
+        { title: "Pris", num: true, value: function (r) { return Charts.formatKr(r.cheapest_ore, 2); } },
+        { title: "Dyrast", value: function (r) { return r.dearest_store; } },
+        { title: "Pris", num: true, value: function (r) { return Charts.formatKr(r.dearest_ore, 2); } },
+        { title: "Skillnad", num: true, value: function (r) { return percent(r.spread_share); } }
+      ], data.stores);
+    });
+  })();
+  </script>
+</body>
+</html>

@@ -253,17 +253,14 @@
     });
     box.appendChild(rerun);
 
-    box.appendChild(text("h3", "Störst okategoriserat"));
-    var unknown = document.createElement("div");
-    box.appendChild(unknown);
-    table(unknown, [
-      { title: "Vara", value: function (r) { return r.example_name; } },
-      { title: "Gånger", num: true, value: function (r) { return String(r.times); } },
-      { title: "Totalt", num: true, value: function (r) { return Charts.formatKr(r.total_ore, 2); } },
-      { title: "Sätt kategori", cell: categoryPicker }
-    ], data.unknown);
+    box.appendChild(text("h3", "Okategoriserat"));
 
-    box.appendChild(text("h3", "Kvitton där raderna inte summerar till totalen"));
+    var panel = document.createElement("div");
+    panel.className = "bulk";
+    box.appendChild(panel);
+    renderBulk(panel, "");
+
+        box.appendChild(text("h3", "Kvitton där raderna inte summerar till totalen"));
     var mismatched = document.createElement("div");
     box.appendChild(mismatched);
     if (!data.mismatched.length) {
@@ -394,6 +391,158 @@
     });
   }
 
+  /* ---------- Bulkkategorisering ----------
+   * Ett par hundra okända varunamn går inte att beta av med en dropdown per
+   * rad. Här kan många markeras och kategoriseras i ett svep, och grupperna
+   * bygger på första ordet i varunamnet -- svenska kvittonamn leder med
+   * produktordet, så "KYCKLING*" blir en användbar hög direkt.
+   */
+
+  function renderBulk(panel, search) {
+    fetch("/api/uncategorized?limit=100&search=" + encodeURIComponent(search))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        panel.replaceChildren();
+
+        if (data.groups.length) {
+          panel.appendChild(text("p", "Förslag ur dina egna varunamn:", "note"));
+          var groups = document.createElement("div");
+          groups.className = "bulk-groups";
+          data.groups.forEach(function (group) {
+            var chip = document.createElement("button");
+            chip.type = "button";
+            chip.className = "bulk-chip";
+            chip.textContent = group.examples[0] +
+              (group.name_keys.length > 1 ? "  +" + (group.name_keys.length - 1) + " fler" : "") +
+              "  ·  " + Charts.formatKr(group.total_ore);
+            chip.title = group.examples.join("\n");
+            chip.addEventListener("click", function () {
+              applyBulk(panel, group.name_keys, search, group.prefix);
+            });
+            groups.appendChild(chip);
+          });
+          panel.appendChild(groups);
+        }
+
+        var tools = document.createElement("div");
+        tools.className = "bulk-tools";
+        var field = document.createElement("input");
+        field.type = "search";
+        field.placeholder = "Sök vara…";
+        field.value = search;
+        field.addEventListener("change", function () { renderBulk(panel, field.value); });
+        tools.appendChild(field);
+
+        var all = document.createElement("button");
+        all.type = "button";
+        all.textContent = "Markera alla synliga";
+        tools.appendChild(all);
+
+        var picker = document.createElement("select");
+        picker.appendChild(new Option("Välj kategori …", ""));
+        (latest.allCategories || []).forEach(function (name) {
+          picker.appendChild(new Option(name, name));
+        });
+        tools.appendChild(picker);
+
+        var apply = document.createElement("button");
+        apply.type = "button";
+        apply.className = "primary";
+        apply.textContent = "Sätt kategori";
+        tools.appendChild(apply);
+        panel.appendChild(tools);
+
+        panel.appendChild(text("p",
+          data.total + " okategoriserade varunamn" +
+          (data.items.length < data.total ? " (visar " + data.items.length + ")" : ""),
+          "note"));
+
+        var boxes = [];
+        var list = document.createElement("div");
+        list.className = "table-scroll";
+        var el = document.createElement("table");
+        var head = document.createElement("tr");
+        ["", "Vara", "Gånger", "Totalt"].forEach(function (title, i) {
+          head.appendChild(text("th", title, i > 1 ? "num" : ""));
+        });
+        el.appendChild(document.createElement("thead")).appendChild(head);
+        var body = document.createElement("tbody");
+        data.items.forEach(function (row) {
+          var tr = document.createElement("tr");
+          var cell = document.createElement("td");
+          var check = document.createElement("input");
+          check.type = "checkbox";
+          check.value = row.name_key;
+          check.setAttribute("aria-label", "Markera " + row.example_name);
+          boxes.push(check);
+          cell.appendChild(check);
+          tr.appendChild(cell);
+          tr.appendChild(text("td", row.example_name));
+          tr.appendChild(text("td", String(row.times), "num"));
+          tr.appendChild(text("td", Charts.formatKr(row.total_ore, 2), "num"));
+          body.appendChild(tr);
+        });
+        el.appendChild(body);
+        list.appendChild(el);
+        panel.appendChild(list);
+
+        all.addEventListener("click", function () {
+          boxes.forEach(function (box) { box.checked = true; });
+        });
+        apply.addEventListener("click", function () {
+          var chosen = boxes.filter(function (b) { return b.checked; })
+                            .map(function (b) { return b.value; });
+          if (!picker.value || !chosen.length) return;
+          applyBulk(panel, chosen, search, picker.value);
+        });
+      });
+  }
+
+  function applyBulk(panel, nameKeys, search, category) {
+    if (!category || !nameKeys.length) return;
+    var chosen = category;
+    if (!(latest.allCategories || []).includes(category)) {
+      chosen = window.prompt("Kategori för " + nameKeys.length + " varor",
+                             (latest.allCategories || [])[0] || "");
+      if (!chosen) return;
+    }
+    fetch("/api/overrides/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name_keys: nameKeys, category: chosen })
+    }).then(function (response) {
+      if (!response.ok) throw new Error("kunde inte spara");
+      refresh();
+    }).catch(function (error) { window.alert(error.message); });
+  }
+
+  /* ---------- Upplåsning ----------
+   * Nyckeln byts mot en cookie via POST, så hemligheten aldrig hamnar i
+   * webbläsarhistoriken eller i adressfältets autocomplete. Triggern är en
+   * tangentsekvens -- ingenting klickbart och ingenting synligt.
+   */
+
+  function watchForUnlockSequence() {
+    var target = "oppna";
+    var typed = "";
+    document.addEventListener("keydown", function (event) {
+      if (event.target && /^(INPUT|SELECT|TEXTAREA)$/.test(event.target.tagName)) return;
+      if (event.key.length !== 1) return;
+      typed = (typed + event.key.toLowerCase()).slice(-target.length);
+      if (typed !== target) return;
+      typed = "";
+      var key = window.prompt("Nyckel");
+      if (!key) return;
+      fetch("/api/unlock", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: key })
+      }).then(function (response) {
+        if (response.ok) window.location.href = "/o";
+      });
+    });
+  }
+
   /* ---------- Laddning ---------- */
 
   function refresh() {
@@ -486,6 +635,7 @@
 
     loadSession();
     pollJob();
+    watchForUnlockSequence();
     $("btn-login").addEventListener("click", function () { startJob("/api/job/login"); });
     $("btn-sync").addEventListener("click", function () { startJob("/api/job/sync"); });
     $("btn-reparse").addEventListener("click", function () { startJob("/api/job/reparse"); });
