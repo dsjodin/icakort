@@ -178,12 +178,15 @@
         d: barPath(x, y(d.value), barW, h, "top"), fill: token("--seq")
       }));
 
-      var tick = el("text", {
-        x: cx, y: H - 14, "text-anchor": "middle",
-        fill: token("--text-muted"), "font-size": 11
-      });
-      tick.textContent = d.label;
-      svg.appendChild(tick);
+      // Tom etikett = medvetet utglesad axel. Tooltipen har ändå full text.
+      if (d.label) {
+        var tick = el("text", {
+          x: cx, y: H - 14, "text-anchor": "middle",
+          fill: token("--text-muted"), "font-size": 11
+        });
+        tick.textContent = d.label;
+        svg.appendChild(tick);
+      }
 
       // Bara toppen får direktetikett - en siffra på varje stapel läses inte.
       if (i === peak) {
@@ -201,7 +204,7 @@
         fill: "transparent", tabindex: 0
       });
       function show() {
-        ctx.tooltip.show(cx, y(d.value), d.label, [
+        ctx.tooltip.show(cx, y(d.value), d.title || d.label, [
           { value: formatKr(d.value, 2), name: options.valueName || "", color: token("--seq") }
         ].concat(d.extra || []));
       }
@@ -366,12 +369,14 @@
         cursor += value;
       });
 
-      var tick = el("text", {
-        x: cx, y: H - 14, "text-anchor": "middle",
-        fill: token("--text-muted"), "font-size": 11
-      });
-      tick.textContent = label;
-      svg.appendChild(tick);
+      if (label) {
+        var tick = el("text", {
+          x: cx, y: H - 14, "text-anchor": "middle",
+          fill: token("--text-muted"), "font-size": 11
+        });
+        tick.textContent = label;
+        svg.appendChild(tick);
+      }
 
       var hit = el("rect", {
         x: pad.left + band * i, y: pad.top, width: band, height: plotH,
@@ -386,7 +391,8 @@
             return { value: formatKr(r.v, 2), name: r.s.name, color: r.s.color };
           });
         rows.push({ value: formatKr(totals[i], 2), name: "Totalt", color: null });
-        ctx.tooltip.show(cx, y(totals[i]), label, rows);   // en tooltip, alla serier
+        var head = (options.titles && options.titles[i]) || label;
+        ctx.tooltip.show(cx, y(totals[i]), head, rows);   // en tooltip, alla serier
       }
       hit.addEventListener("pointermove", show);
       hit.addEventListener("focus", show);

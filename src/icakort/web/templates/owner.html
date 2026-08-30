@@ -39,10 +39,14 @@
     var MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun",
                   "jul", "aug", "sep", "okt", "nov", "dec"];
 
-    function monthLabel(month, index) {
+    function monthLabel(month, index, total) {
       var parts = String(month).split("-");
       var name = MONTHS[parseInt(parts[1], 10) - 1] || month;
-      return (index === 0 || parts[1] === "01") ? name + " " + parts[0].slice(2) : name;
+      var isJanuary = parts[1] === "01";
+      // Över ett par år ryms inte en etikett per månad. Då märks bara
+      // årsskiftena ut -- annars klumpar de ihop sig till oläslig gröt.
+      if (total > 24) return isJanuary ? parts[0] : "";
+      return (index === 0 || isJanuary) ? name + " " + parts[0].slice(2) : name;
     }
 
     function text(tag, value, className) {
@@ -88,7 +92,9 @@
         };
       });
       Charts.stackedColumns(document.getElementById("chart-owner-months"),
-                            months.map(monthLabel), series);
+                            months.map(function (m, i) {
+                              return monthLabel(m, i, months.length);
+                            }), series, { titles: months });
 
       var tabs = document.getElementById("owner-tabs");
       tabs.replaceChildren();

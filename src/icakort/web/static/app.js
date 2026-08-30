@@ -28,10 +28,14 @@
     });
   }
 
-  function monthLabel(month, index) {
+  function monthLabel(month, index, total) {
     var parts = String(month).split("-");
     var name = MONTHS[parseInt(parts[1], 10) - 1] || month;
-    return (index === 0 || parts[1] === "01") ? name + " " + parts[0].slice(2) : name;
+    var isJanuary = parts[1] === "01";
+    // Över ett par år ryms inte en etikett per månad. Då märks bara
+    // årsskiftena ut -- annars klumpar de ihop sig till oläslig gröt.
+    if (total > 24) return isJanuary ? parts[0] : "";
+    return (index === 0 || isJanuary) ? name + " " + parts[0].slice(2) : name;
   }
 
   function percent(fraction, decimals) {
@@ -97,7 +101,8 @@
 
     Charts.columns($("chart-monthly"), data.monthly.map(function (row, i) {
       return {
-        label: monthLabel(row.month, i),
+        label: monthLabel(row.month, i, data.monthly.length),
+        title: row.month,
         value: row.total_ore,
         extra: [{ value: String(row.receipts), name: "kvitton", color: null }]
       };
@@ -143,8 +148,9 @@
 
     Charts.stackedColumns(
       $("chart-category-months"),
-      months.map(monthLabel),
-      series
+      months.map(function (m, i) { return monthLabel(m, i, months.length); }),
+      series,
+      { titles: months }
     );
 
     // Tabellvyn är reliefen för de ljusa serierna i ljust läge.
