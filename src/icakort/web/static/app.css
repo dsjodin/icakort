@@ -343,3 +343,8 @@ button.rerun:disabled { opacity: 0.5; cursor: default; }
   cursor: pointer;
 }
 #category-back:hover { color: var(--text-primary); border-color: var(--baseline); }
+
+/* Källan till en kategori, i granskningsvyn. */
+td.source-llm { color: var(--series-2); }
+td.source-manual { color: var(--good); font-weight: 600; }
+td.source-fallback { color: var(--text-muted); }

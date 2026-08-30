@@ -167,3 +167,102 @@ def test_a_current_rules_file_is_left_alone(tmp_path, monkeypatch):
 
     assert not (tmp_path / "categories.v99.bak").exists()
     assert categorize.load_ruleset(path).fallback == "Eget"
+
+
+# ---------------------------------------------------------------------------
+# Rangordningen: huvudordet vinner
+#
+# Svenska sammansättningar sätter huvudordet sist. Innan rangordningen fanns
+# avgjorde filordningen, och ett förled kunde slå huvudordet: "korvbröd" blev
+# chark, "citronläsk" blev frukt.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "name_key,category",
+    [
+        ("korvbröd", "Bröd"),                          # bröd (slut) slår korv (början)
+        ("citronläsk", "Läsk & vatten"),               # läsk slår citron
+        ("kycklingbuljong", "Konserver & torrvaror"),  # buljong slår kyckling
+        ("päroncider", "Öl & cider"),                  # cider slår päron
+        ("loka citron", "Läsk & vatten"),              # varumärket slår smakordet
+        ("ramlösa naturell", "Läsk & vatten"),
+    ],
+)
+def test_reported_misclassifications_are_fixed(ruleset, name_key, category):
+    assert ruleset.classify(name_key, "product")[0] == category
+
+
+@pytest.mark.parametrize(
+    "name_key,category",
+    [
+        # Förledet ska fortfarande vinna när huvudordet inte är någon regel.
+        ("kycklingfilé", "Fågel"),
+        # Huvudordet vinner även där filordningen förr råkade ge rätt svar.
+        ("havremjölk", "Mjölk & fil"),
+        ("bärkasse", "Förvaring & påsar"),
+        # Hela ord väger tyngst.
+        ("mjölk mellan", "Mjölk & fil"),
+        ("citron", "Frukt"),                 # ensamt smakord är fortfarande frukt
+        ("banan", "Frukt"),
+    ],
+)
+def test_ranking_does_not_break_what_worked(ruleset, name_key, category):
+    assert ruleset.classify(name_key, "product")[0] == category
+
+
+def test_score_ranks_by_position_in_the_word():
+    from icakort.categorize import _score_span
+
+    # "korvbröd": korv i början, bröd i slutet, hela ordet.
+    assert _score_span("korvbröd", 0, 4) == categorize.SCORE_MODIFIER
+    assert _score_span("korvbröd", 4, 8) == categorize.SCORE_HEAD
+    assert _score_span("korvbröd", 0, 8) == categorize.SCORE_WHOLE_WORD
+    # Andra ordet i ett namn med mellanslag.
+    assert _score_span("loka citron", 5, 11) == categorize.SCORE_WHOLE_WORD
+    assert categorize.SCORE_WHOLE_WORD > categorize.SCORE_HEAD > categorize.SCORE_MODIFIER
+
+
+def test_a_tie_is_broken_by_file_order(ruleset):
+    """Två hela ord ger samma poäng -- då avgör ordningen, som därför måste
+    gå från entydiga ord till svaga signaler."""
+    assert ruleset.classify("diskmedel citron", "product")[0] == "Städ & rengöring"
+
+
+# ---------------------------------------------------------------------------
+# Källan till en kategori
+# ---------------------------------------------------------------------------
+
+
+def test_the_source_distinguishes_claude_from_a_manual_fix(tmp_path, raw_receipt):
+    conn = store.connect(tmp_path / "test.db")
+    store.save_receipt(conn, normalize_receipt(raw_receipt["receipt"], raw_receipt["list_entry"]))
+    store.set_override(conn, "prylburk xyz", "Kryddor", source="llm")
+    store.set_override(conn, "banan eko", "Frukt", source="manual")
+    counts = categorize.recategorize(conn)
+
+    assert counts["llm"] == 1
+    assert counts["manual"] == 1
+    sources = dict(conn.execute(
+        "SELECT name_key, category_source FROM items WHERE name_key IN "
+        "('prylburk xyz', 'banan eko')"
+    ).fetchall())
+    assert sources == {"prylburk xyz": "llm", "banan eko": "manual"}
+    conn.close()
+
+
+def test_releasing_claudes_answers_keeps_manual_fixes(tmp_path, raw_receipt):
+    """En rättad regel ska få gälla igen -- men inte på bekostnad av
+    rättningar man gjort själv."""
+    conn = store.connect(tmp_path / "test.db")
+    store.save_receipt(conn, normalize_receipt(raw_receipt["receipt"], raw_receipt["list_entry"]))
+    store.set_override(conn, "prylburk xyz", "Kryddor", source="llm")
+    store.set_override(conn, "banan eko", "Godis", source="manual")
+
+    removed = store.clear_model_overrides(conn)
+    categorize.recategorize(conn)
+
+    assert removed == 1
+    remaining = store.overrides(conn)
+    assert remaining == {"banan eko": ("Godis", "manual")}
+    conn.close()

@@ -253,3 +253,80 @@ def test_an_excluded_item_vanishes_from_the_main_view(page, server):
         f"{server}/api/o/exclude",
         data={"name_key": "kaffe", "excluded": False},
     )
+
+
+# ---------------------------------------------------------------------------
+# Granskningsvyn
+# ---------------------------------------------------------------------------
+
+
+def test_the_review_view_lists_categorised_items_too(page, server):
+    """Bulkverktyget visar bara okategoriserat -- ett fel har ju en kategori."""
+    page.goto(f"{server}/granska", wait_until="networkidle")
+    page.wait_for_timeout(800)
+
+    rows = page.locator("#table tbody tr")
+    assert rows.count() >= 3
+    assert "Kaffe" in page.locator("#table").inner_text()
+
+
+def _review_row(page, name):
+    """Raden för ett visst varunamn.
+
+    has_text duger inte: varje rad innehåller en rullgardin med alla
+    kategorier som <option>, så "Mjölk" matchar varenda rad via alternativet
+    "Mjölk & fil". Matcha på första cellens text i stället.
+    """
+    names = page.eval_on_selector_all(
+        "#table tbody tr td:first-child", "els => els.map(e => e.textContent)"
+    )
+    assert name in names, names[:10]
+    return page.locator("#table tbody tr").nth(names.index(name))
+
+
+def test_correcting_a_category_in_the_review_view_sticks(page, server):
+    page.goto(f"{server}/granska", wait_until="networkidle")
+    page.wait_for_timeout(800)
+
+    _review_row(page, "Mjölk").locator("select").select_option("Kryddor")
+    page.wait_for_timeout(1500)
+
+    items = page.request.get(f"{server}/api/items").json()["items"]
+    assert [i["category"] for i in items if i["name_key"] == "mjölk"] == ["Kryddor"]
+
+    # ... och källan visar att det var en egen rättning, inte en regel.
+    review = page.request.get(f"{server}/api/review", params={"search": "mjölk"}).json()
+    assert review["items"][0]["source"] == "manual"
+
+
+def test_the_source_filter_narrows_the_list(page, server):
+    """Filtret ska kunna plocka fram allt en viss källa satt."""
+    page.goto(f"{server}/granska", wait_until="networkidle")
+    page.wait_for_timeout(800)
+
+    # Skapa ett känt läge i stället för att lita på vad tidigare tester lämnat.
+    _review_row(page, "Kaffe").locator("select").select_option("Kryddor")
+    page.wait_for_timeout(1500)
+
+    page.locator("#source").select_option("manual")
+    page.wait_for_timeout(1000)
+
+    sources = page.eval_on_selector_all(
+        "#table tbody tr td:nth-child(3)", "els => els.map(e => e.textContent)"
+    )
+    assert sources and set(sources) == {"Egen rättning"}
+
+
+def test_releasing_claudes_answers_leaves_manual_fixes(page, server):
+    """Knappen ska släppa modellens svar men inte egna rättningar."""
+    page.request.post(
+        f"{server}/api/overrides",
+        data={"name_key": "okändvara", "category": "Glass"},
+    )
+    before = page.request.get(f"{server}/api/review", params={"source": "manual"}).json()
+    assert before["total"] >= 1
+
+    page.request.delete(f"{server}/api/overrides/llm")
+
+    after = page.request.get(f"{server}/api/review", params={"source": "manual"}).json()
+    assert after["total"] == before["total"]

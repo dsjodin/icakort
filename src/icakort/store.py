@@ -303,10 +303,28 @@ def clear_override(conn: sqlite3.Connection, name_key: str) -> None:
     conn.execute("DELETE FROM overrides WHERE name_key = ?", (name_key,))
     conn.commit()
 
-def overrides(conn: sqlite3.Connection) -> dict[str, str]:
+def overrides(conn: sqlite3.Connection) -> dict[str, tuple[str, str]]:
+    """name_key -> (kategori, källa).
+
+    Källan följer med: utan den går det inte att se om en kategori kom från
+    Claude eller från en egen rättning, och då går ett fel inte att spåra
+    till sin orsak.
+    """
     return {
-        row["name_key"]: row["category"] for row in conn.execute("SELECT * FROM overrides")
+        row["name_key"]: (row["category"], row["source"] or "manual")
+        for row in conn.execute("SELECT name_key, category, source FROM overrides")
     }
+
+
+def clear_model_overrides(conn: sqlite3.Connection) -> int:
+    """Släpp Claudes svar så rättade regler får gälla igen.
+
+    En override slår alltid regeln, så en gammal modellgissning fortsätter
+    annars överskugga en regel som just förbättrats. Egna rättningar rörs inte.
+    """
+    removed = conn.execute("DELETE FROM overrides WHERE source = 'llm'").rowcount
+    conn.commit()
+    return removed
 
 def apply_categories(
     conn: sqlite3.Connection, updates: Iterable[tuple[str, str, str, int]]

@@ -220,6 +220,66 @@ def top_items(
     )
 
 
+def review_items(
+    conn: sqlite3.Connection,
+    search: str | None = None,
+    source: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict]:
+    """Alla varunamn med kategori, grupp och varifrån kategorin kom.
+
+    Till skillnad från listan över okategoriserat visar den här *allt*, så
+    en felkategoriserad vara går att hitta och rätta. Utan den syns bara
+    varor som saknar kategori -- och ett fel har ju en kategori.
+    """
+    clauses = ["i.name_key <> ''", "i.item_type = 'product'"]
+    params: list = []
+    if search:
+        clauses.append("(i.name_key LIKE ? OR i.name LIKE ?)")
+        params.extend([f"%{search.lower()}%", f"%{search}%"])
+    if source:
+        clauses.append("i.category_source = ?")
+        params.append(source)
+
+    return _rows(
+        conn,
+        f"""
+        SELECT i.name_key,
+               MIN(i.name)                            AS name,
+               COALESCE(i.category, 'Okategoriserat') AS category,
+               COALESCE(i.category_group, 'Övrigt')   AS category_group,
+               COALESCE(i.category_source, 'fallback') AS source,
+               COUNT(*)                               AS times,
+               SUM(i.line_total_ore)                  AS total_ore
+        FROM items i
+        WHERE {" AND ".join(clauses)}
+        GROUP BY i.name_key
+        ORDER BY SUM(i.line_total_ore) DESC
+        LIMIT ? OFFSET ?
+        """,
+        params + [limit, offset],
+    )
+
+
+def review_total(
+    conn: sqlite3.Connection, search: str | None = None, source: str | None = None
+) -> int:
+    clauses = ["name_key <> ''", "item_type = 'product'"]
+    params: list = []
+    if search:
+        clauses.append("(name_key LIKE ? OR name LIKE ?)")
+        params.extend([f"%{search.lower()}%", f"%{search}%"])
+    if source:
+        clauses.append("COALESCE(category_source, 'fallback') = ?")
+        params.append(source)
+    row = conn.execute(
+        f"SELECT COUNT(DISTINCT name_key) AS n FROM items WHERE {' AND '.join(clauses)}",
+        params,
+    ).fetchone()
+    return row["n"] or 0
+
+
 def price_history(
     conn: sqlite3.Connection, name_key: str, include_excluded: bool = False
 ) -> list[dict]:

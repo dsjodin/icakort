@@ -329,6 +329,38 @@ def api_uncategorized(
     }
 
 
+@app.get("/api/review")
+def api_review(
+    search: Optional[str] = Query(None),
+    source: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    conn: sqlite3.Connection = Depends(get_conn),
+) -> dict:
+    """Alla varunamn med kategori och källa -- även de som redan har en."""
+    try:
+        categories = categorize_mod.load_ruleset().category_names
+    except categorize_mod.RuleError:
+        categories = stats.categories(conn)
+    return {
+        "items": stats.review_items(conn, search, source, limit, offset),
+        "total": stats.review_total(conn, search, source),
+        "all_categories": categories,
+    }
+
+
+@app.delete("/api/overrides/llm")
+def api_clear_model_overrides(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
+    """Släpp Claudes svar så rättade regler får gälla igen."""
+    removed = store.clear_model_overrides(conn)
+    return {"removed": removed, "counts": categorize_mod.recategorize(conn)}
+
+
+@app.get("/granska", response_class=HTMLResponse)
+def review_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "review.html")
+
+
 @app.get("/api/prices")
 def api_prices(
     filters: stats.Filters = Depends(get_filters),

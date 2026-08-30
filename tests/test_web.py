@@ -104,11 +104,14 @@ def test_categories_file_is_seeded_into_the_data_dir(client, tmp_path):
 
 def test_an_edited_categories_file_of_the_current_version_is_left_alone(tmp_path, monkeypatch):
     monkeypatch.setenv("ICAKORT_DATA_DIR", str(tmp_path))
+    # Följ paketets version, annars måste testet röras vid varje höjning.
+    current = config._file_version(config.DEFAULT_CATEGORIES)
+    body = f"version: {current}\nfallback: Eget\ncategories: []\n"
     path = tmp_path / "categories.yaml"
-    path.write_text("version: 2\nfallback: Eget\ncategories: []\n", encoding="utf-8")
+    path.write_text(body, encoding="utf-8")
 
     config.ensure_categories_file()
-    assert path.read_text(encoding="utf-8") == "version: 2\nfallback: Eget\ncategories: []\n"
+    assert path.read_text(encoding="utf-8") == body
     assert categorize.load_ruleset().fallback == "Eget"
 
 

@@ -189,13 +189,18 @@
   function renderItems(data) {
     table($("table-items"), [
       { title: "Vara", value: function (r) { return r.name; } },
-      { title: "Kategori", value: function (r) { return r.category; } },
+      // Rättning där felet råkar synas. Granskningsvyn är för genomgång.
+      { title: "Kategori", cell: function (r) { return categoryPicker(r, r.category); } },
       { title: "Gånger", num: true, value: function (r) { return String(r.times); } },
       { title: "Totalt", num: true, value: function (r) { return Charts.formatKr(r.total_ore, 2); } }
     ], data.items, function (tr, row) {
       tr.className = "clickable" + (state.item === row.name_key ? " is-active" : "");
       tr.tabIndex = 0;
-      tr.addEventListener("click", function () { selectItem(row); });
+      tr.addEventListener("click", function (event) {
+        // Dropdownen ligger i raden; att öppna den ska inte byta prisdiagram.
+        if (event.target.tagName === "SELECT") return;
+        selectItem(row);
+      });
       tr.addEventListener("keydown", function (event) {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault();
@@ -304,14 +309,15 @@
     }
   }
 
-  /* Kategoriväljaren gör `categorize --unknown`-arbetsflödet till en dropdown. */
-  function categoryPicker(row) {
+  /* Kategoriväljaren gör `categorize --unknown`-arbetsflödet till en dropdown.
+     Med `current` satt fungerar den även som rättning av en befintlig kategori. */
+  function categoryPicker(row, current) {
     var select = document.createElement("select");
     select.className = "category-picker";
-    select.setAttribute("aria-label", "Kategori för " + row.example_name);
-    select.appendChild(new Option("Välj …", ""));
+    select.setAttribute("aria-label", "Kategori för " + (row.example_name || row.name));
+    if (!current) select.appendChild(new Option("Välj …", ""));
     (latest.allCategories || []).forEach(function (name) {
-      select.appendChild(new Option(name, name));
+      select.appendChild(new Option(name, name, false, name === current));
     });
     select.addEventListener("change", function () {
       if (!select.value) return;

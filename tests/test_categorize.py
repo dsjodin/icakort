@@ -56,7 +56,10 @@ def test_override_beats_rules(conn, ruleset):
     counts = categorize.recategorize(conn, ruleset)
 
     assert counts["fallback"] == 0
-    assert counts["override"] == 1
+    # Källan är "manual" och inte bara "override" -- ett fel ska gå att spåra
+    # till den som orsakade det.
+    assert counts["manual"] == 1
+    assert counts["llm"] == 0
     row = conn.execute(
         "SELECT category FROM items WHERE name_key = 'prylburk xyz'"
     ).fetchone()

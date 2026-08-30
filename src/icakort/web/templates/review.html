@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Granska kategorier</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="page-head">
+    <div class="head-row">
+      <div>
+        <h1>Granska kategorier</h1>
+      </div>
+      <div class="session"><a class="backlink" href="/">← Översikt</a></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="card">
+      <p class="sub">
+        Alla varor, inte bara de okategoriserade — ett fel har ju en kategori.
+        Källan visar varifrån den kom, så en girig regel går att skilja från en
+        modellgissning.
+      </p>
+
+      <div class="bulk-tools">
+        <input type="search" id="search" placeholder="Sök vara…">
+        <select id="source">
+          <option value="">Alla källor</option>
+          <option value="rule">Regel</option>
+          <option value="llm">Claude</option>
+          <option value="manual">Egen rättning</option>
+          <option value="fallback">Okategoriserat</option>
+          <option value="type">Pant och rabatter</option>
+        </select>
+        <button type="button" id="clear-llm">Släpp Claudes svar</button>
+      </div>
+
+      <p class="note" id="count"></p>
+      <div id="table"></div>
+    </section>
+  </main>
+
+  <script src="/static/charts.js"></script>
+  <script>
+  (function () {
+    "use strict";
+
+    var KALLA = {
+      rule: "Regel", llm: "Claude", manual: "Egen rättning",
+      fallback: "Okategoriserat", type: "Radtyp"
+    };
+    var categories = [];
+
+    function text(tag, value, className) {
+      var node = document.createElement(tag);
+      node.textContent = value;
+      if (className) node.className = className;
+      return node;
+    }
+
+    function load() {
+      var params = new URLSearchParams({
+        search: document.getElementById("search").value,
+        source: document.getElementById("source").value,
+        limit: 200
+      });
+      fetch("/api/review?" + params).then(function (r) { return r.json(); })
+        .then(function (data) {
+          categories = data.all_categories;
+          document.getElementById("count").textContent =
+            data.total + " varunamn" +
+            (data.items.length < data.total ? " (visar " + data.items.length + ")" : "");
+          render(data.items);
+        });
+    }
+
+    function render(items) {
+      var box = document.getElementById("table");
+      box.replaceChildren();
+      if (!items.length) {
+        box.appendChild(text("p", "Inga varor matchar.", "empty"));
+        return;
+      }
+      var scroll = document.createElement("div");
+      scroll.className = "table-scroll";
+      var table = document.createElement("table");
+      var head = document.createElement("tr");
+      ["Vara", "Grupp", "Källa", "Gånger", "Totalt", "Kategori"].forEach(function (t, i) {
+        head.appendChild(text("th", t, i === 3 || i === 4 ? "num" : ""));
+      });
+      table.appendChild(document.createElement("thead")).appendChild(head);
+
+      var body = document.createElement("tbody");
+      items.forEach(function (row) {
+        var tr = document.createElement("tr");
+        tr.appendChild(text("td", row.name));
+        tr.appendChild(text("td", row.category_group));
+        tr.appendChild(text("td", KALLA[row.source] || row.source, "source-" + row.source));
+        tr.appendChild(text("td", String(row.times), "num"));
+        tr.appendChild(text("td", Charts.formatKr(row.total_ore, 2), "num"));
+
+        var cell = document.createElement("td");
+        var picker = document.createElement("select");
+        picker.className = "category-picker";
+        picker.setAttribute("aria-label", "Kategori för " + row.name);
+        categories.forEach(function (name) {
+          picker.appendChild(new Option(name, name, false, name === row.category));
+        });
+        picker.addEventListener("change", function () {
+          picker.disabled = true;
+          fetch("/api/overrides", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name_key: row.name_key, category: picker.value })
+          }).then(function (response) {
+            if (!response.ok) throw new Error("kunde inte spara");
+            load();
+          }).catch(function (error) {
+            picker.disabled = false;
+            window.alert(error.message);
+          });
+        });
+        cell.appendChild(picker);
+        tr.appendChild(cell);
+        body.appendChild(tr);
+      });
+      table.appendChild(body);
+      scroll.appendChild(table);
+      box.appendChild(scroll);
+    }
+
+    document.getElementById("search").addEventListener("change", load);
+    document.getElementById("source").addEventListener("change", load);
+    document.getElementById("clear-llm").addEventListener("click", function () {
+      if (!window.confirm(
+            "Släpper Claudes kategorier så att rättade regler får gälla igen. " +
+            "Dina egna rättningar rörs inte.")) return;
+      fetch("/api/overrides/llm", { method: "DELETE" })
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          window.alert(data.removed + " modellsatta kategorier släppta.");
+          load();
+        });
+    });
+    load();
+  })();
+  </script>
+</body>
+</html>

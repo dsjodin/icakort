@@ -53,14 +53,48 @@ def compile_literal(literal: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w){escaped}|{escaped}(?!\w)", re.IGNORECASE)
 
 
+# Hur väl en regel träffar. Svenska sammansättningar sätter huvudordet sist,
+# så "korvbröd" är ett bröd och inte en korv -- en träff i ordets slut väger
+# därför tyngre än en i början.
+SCORE_WHOLE_WORD = 3
+SCORE_HEAD = 2        # ordets slut: huvudordet i en sammansättning
+SCORE_MODIFIER = 1    # ordets början: förledet
+
+
+def _score_span(name_key: str, start: int, end: int) -> int:
+    """Rangordna en träff efter var i ordet den ligger."""
+    # Ordet träffen ligger i, avgränsat av mellanslag.
+    word_start = name_key.rfind(" ", 0, start) + 1
+    word_end = name_key.find(" ", end)
+    if word_end == -1:
+        word_end = len(name_key)
+
+    if start == word_start and end == word_end:
+        return SCORE_WHOLE_WORD
+    if end == word_end:
+        return SCORE_HEAD
+    if start == word_start:
+        return SCORE_MODIFIER
+    return 0
+
+
 @dataclass
 class Rule:
     category: str
     group: str
     patterns: tuple[re.Pattern[str], ...]
 
+    def match_score(self, name_key: str) -> int:
+        """Bästa träffpoängen för regeln, eller 0 om den inte träffar."""
+        best = 0
+        for pattern in self.patterns:
+            match = pattern.search(name_key)
+            if match:
+                best = max(best, _score_span(name_key, match.start(), match.end()))
+        return best
+
     def matches(self, name_key: str) -> bool:
-        return any(pattern.search(name_key) for pattern in self.patterns)
+        return self.match_score(name_key) > 0
 
 
 @dataclass
@@ -101,13 +135,24 @@ class Ruleset:
         return self.groups.get(category, FALLBACK_GROUP)
 
     def classify(self, name_key: str, item_type: str) -> tuple[str, str]:
-        """Returnera (kategori, källa)."""
+        """Returnera (kategori, källa).
+
+        Bäst träff vinner, inte första träff: huvudordet i en sammansättning
+        väger tyngre än förledet. Lika poäng bryts av ordningen i filen, så
+        den ordningen ska gå från entydiga ord till svaga signaler.
+        """
         type_category = TYPE_CATEGORIES.get(item_type)
         if type_category:
             return type_category, "type"
+
+        best_rule = None
+        best_score = 0
         for rule in self.rules:
-            if rule.matches(name_key):
-                return rule.category, "rule"
+            score = rule.match_score(name_key)
+            if score > best_score:
+                best_rule, best_score = rule, score
+        if best_rule is not None:
+            return best_rule.category, "rule"
         return self.fallback, "fallback"
 
 
@@ -153,7 +198,7 @@ def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> di
 
     groups = ruleset.groups
     updates: list[tuple[str, str, str, int]] = []
-    counts = {"total": 0, "override": 0, "rule": 0, "type": 0, "fallback": 0}
+    counts = {"total": 0, "manual": 0, "llm": 0, "rule": 0, "type": 0, "fallback": 0}
     for row in conn.execute("SELECT id, name_key, item_type FROM items"):
         counts["total"] += 1
         name = row["name_key"] or ""
@@ -161,7 +206,9 @@ def recategorize(conn: sqlite3.Connection, ruleset: Ruleset | None = None) -> di
         if item_type in TYPE_CATEGORIES:
             category, source = TYPE_CATEGORIES[item_type], "type"
         elif name in manual:
-            category, source = manual[name], "override"
+            # Källan är "llm" eller "manual" -- inte bara "override". Först då
+            # går ett fel att spåra till den som orsakade det.
+            category, source = manual[name]
         else:
             category, source = ruleset.classify(name, item_type)
         counts[source] = counts.get(source, 0) + 1

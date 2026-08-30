@@ -1,9 +1,21 @@
 # Kategoriregler för varunamn på ICA-kvitton.
 #
 # Matchning sker mot ett normaliserat varunamn (gemener, utan mängd- och
-# förpackningsangivelser). Första träffen vinner, så ordningen i filen är
-# prioritetsordningen: lägg entydiga kategorier före breda. Städ ligger före
-# Frukt & grönt just därför -- annars blir "DISKMEDEL CITRON" citrusfrukt.
+# förpackningsangivelser).
+#
+# BÄSTA träffen vinner, inte första. Svenska sammansättningar sätter
+# huvudordet sist, så en träff i ordets slut väger tyngre än en i början:
+# "korvbröd" är ett bröd, "citronläsk" är en läsk, "kycklingbuljong" är en
+# buljong. Ett helt ord väger tyngst.
+#
+# Lika poäng bryts av ordningen i filen, så den ska gå från entydiga ord till
+# svaga signaler. Varumärken och huvudord först; rena smakord -- citron,
+# päron, hallon -- är den svagaste signal som finns och hör hemma sist.
+# Därför ligger Dryck före Frukt & grönt: annars blir "LOKA CITRON" en frukt.
+#
+# En felkälla som inte går att regelfixa: foglingsformer. "Äpple" blir
+# "äppel" i sammansättning, så regeln `äpple` missar "äppeljuice" helt.
+# Sådana får fångas med egna regler eller för hand.
 #
 # En regel är antingen en delsträng eller ett reguljärt uttryck
 # ({re: "..."}). En delsträng träffar när den ligger vid en ordgräns i någon
@@ -22,16 +34,13 @@
 # Arbetsflöde: kör `icakort categorize --unknown`, eller använd
 # bulkverktyget och Claude-förslagen i webbappen.
 
-version: 2
+version: 3
 fallback: Okategoriserat
 
 categories:
-  # --- Entydiga icke-livsmedel först ---------------------------------------
-
   - name: Pant
     group: Pant & rabatter
     match: ["pant"]
-
   - name: Städ & rengöring
     group: Hushåll
     match:
@@ -48,7 +57,6 @@ categories:
       - propplösare
       - skurmedel
       - svamptork
-
   - name: Papper & plast
     group: Hushåll
     match:
@@ -61,7 +69,6 @@ categories:
       - bakplåtspapper
       - plastfolie
       - smörpapper
-
   - name: Förvaring & påsar
     group: Hushåll
     match:
@@ -72,7 +79,6 @@ categories:
       - kasse
       - matlåda
       - burklock
-
   - name: Batterier & smått
     group: Hushåll
     match:
@@ -85,7 +91,6 @@ categories:
       - värmeljus
       - grillkol
       - tändvätska
-
   - name: Hygien
     group: Hygien & barn
     match:
@@ -102,7 +107,6 @@ categories:
       - tampong
       - trosskydd
       - bomullspinnar
-
   - name: Hår & hud
     group: Hygien & barn
     match:
@@ -115,7 +119,6 @@ categories:
       - solkräm
       - ansiktskräm
       - läppcerat
-
   - name: Apotek
     group: Hygien & barn
     match:
@@ -128,7 +131,6 @@ categories:
       - vitamin
       - omega
       - kondom
-
   - name: Blöjor & barn
     group: Hygien & barn
     match:
@@ -139,7 +141,6 @@ categories:
       - modersmjölk
       - nappflaska
       - napp
-
   - name: Djur
     group: Övrigt
     match:
@@ -150,7 +151,6 @@ categories:
       - hundgodis
       - kattgodis
       - tuggben
-
   - name: Blommor & växter
     group: Övrigt
     match:
@@ -165,7 +165,6 @@ categories:
       - tulpan
       - lilja
       - snittblom
-
   - name: Kiosk & tidningar
     group: Övrigt
     match:
@@ -177,7 +176,6 @@ categories:
       - presentkort
       - snus
       - cigarett
-
   - name: Säsong
     group: Övrigt
     match:
@@ -187,9 +185,54 @@ categories:
       - fyrverkeri
       - present
       - julklapp
-
-  # --- Färskvaror -----------------------------------------------------------
-
+  - name: Kaffe & te
+    group: Dryck
+    match:
+      - kaffe
+      - bryggkaffe
+      - snabbkaffe
+      - espresso
+      - kapslar
+      - {re: "(^|\\s)te(\\s|$)"}   # bara ordet "te", inte varje ord som slutar på -te
+      - rooibos
+  - name: Läsk & vatten
+    group: Dryck
+    match:
+      # Varumärken är entydiga, och det enda som slår ett smakord där smaken
+      # står som eget ord ("LOKA CITRON").
+      - loka
+      - ramlösa
+      - festis
+      - trocadero
+      - zingo
+      - pucko
+      - pepsi
+      - läsk
+      - cola
+      - fanta
+      - sprite
+      - mineralvatten
+      - vatten
+      - energidryck
+      - tonic
+  - name: Juice & saft
+    group: Dryck
+    match:
+      - bravo
+      - tropicana
+      - juice
+      - saft
+      - smoothie
+      - nypon
+      - måltidsdryck
+  - name: Öl & cider
+    group: Dryck
+    match:
+      - {re: "(^|\\s)öl(\\s|$)"}   # inte "mjöl"
+      - lättöl
+      - folköl
+      - cider
+      - alkoholfri
   - name: Frukt
     group: Frukt & grönt
     match:
@@ -217,7 +260,6 @@ categories:
       - björnbär
       - körsbär
       - bär
-
   - name: Grönsaker
     group: Frukt & grönt
     match:
@@ -243,7 +285,6 @@ categories:
       - selleri
       - fänkål
       - grönsak
-
   - name: Potatis & rotfrukter
     group: Frukt & grönt
     match:
@@ -259,7 +300,6 @@ categories:
       - schalottenlök
       - ingefära
       - sötpotatis
-
   - name: Färska örter
     group: Frukt & grönt
     match:
@@ -271,7 +311,6 @@ categories:
       - timjan
       - rosmarin
       - mynta
-
   - name: Ost
     group: Mejeri & ägg
     match:
@@ -287,7 +326,6 @@ categories:
       - ädelost
       - brie
       - halloumi
-
   - name: Mjölk & fil
     group: Mejeri & ägg
     match:
@@ -299,7 +337,6 @@ categories:
       - matlagningsgrädde
       - creme fraiche
       - crème fraîche
-
   - name: Yoghurt & kvarg
     group: Mejeri & ägg
     match:
@@ -309,7 +346,6 @@ categories:
       - kesella
       - keso
       - skyr
-
   - name: Smör & margarin
     group: Mejeri & ägg
     match:
@@ -318,11 +354,9 @@ categories:
       - margarin
       - lätta
       - flora
-
   - name: Ägg
     group: Mejeri & ägg
     match: ["ägg"]
-
   - name: Växtbaserat
     group: Mejeri & ägg
     match:
@@ -332,15 +366,12 @@ categories:
       - oatly
       - havregurt
       - sojayoghurt
-
   - name: Fågel
     group: Kött & fisk
     match:
       - kyckling
       - kalkon
       - anka
-
-
   - name: Kött
     group: Kött & fisk
     match:
@@ -359,7 +390,6 @@ categories:
       - högrev
       - oxfilé
       - fläskfilé
-
   - name: Chark & pålägg
     group: Kött & fisk
     match:
@@ -373,7 +403,6 @@ categories:
       - falukorv
       - medwurst
       - rökt
-
   - name: Fisk & skaldjur
     group: Kött & fisk
     match:
@@ -392,7 +421,6 @@ categories:
       - fiskpinn
       - skaldjur
       - surimi
-
   - name: Vegetariskt protein
     group: Kött & fisk
     match:
@@ -404,7 +432,6 @@ categories:
       - vegoburgare
       - falafel
       - oumph
-
   - name: Bröd
     group: Bröd & bageri
     match:
@@ -417,7 +444,6 @@ categories:
       - pitabröd
       - rågkaka
       - tunnbröd
-
   - name: Fikabröd & kakor
     group: Bröd & bageri
     match:
@@ -431,9 +457,6 @@ categories:
       - muffins
       - wienerbröd
       - biskvi
-
-  # --- Skafferi, uppdelat ---------------------------------------------------
-
   - name: Pasta & ris
     group: Skafferi
     match:
@@ -448,7 +471,6 @@ categories:
       - couscous
       - bulgur
       - quinoa
-
   - name: Mjöl & bakning
     group: Skafferi
     match:
@@ -462,7 +484,6 @@ categories:
       - bakkakao
       - mandelmassa
       - strössel
-
   - name: Frukost & flingor
     group: Skafferi
     match:
@@ -473,7 +494,6 @@ categories:
       - havregryn
       - gröt
       - granola
-
   - name: Konserver & torrvaror
     group: Skafferi
     match:
@@ -488,7 +508,6 @@ categories:
       - buljong
       - fond
       - torkad
-
   - name: Såser & smaksättare
     group: Skafferi
     match:
@@ -504,7 +523,6 @@ categories:
       - tacokrydda
       - tacos
       - salsa
-
   - name: Oljor & vinäger
     group: Skafferi
     match:
@@ -513,7 +531,6 @@ categories:
       - rapsolja
       - vinäger
       - balsamico
-
   - name: Kryddor
     group: Skafferi
     match:
@@ -527,7 +544,6 @@ categories:
       - kardemumma
       - oregano
       - chiliflakes
-
   - name: Nötter & frön
     group: Skafferi
     match:
@@ -542,7 +558,6 @@ categories:
       - pumpafrön
       - chiafrön
       - russin
-
   - name: Sylt & sött pålägg
     group: Skafferi
     match:
@@ -552,13 +567,9 @@ categories:
       - nutella
       - choklad pålägg
       - äppelmos
-
-  # --- Färdigmat ------------------------------------------------------------
-
   - name: Pizza
     group: Färdigmat
     match: ["pizza"]
-
   - name: Färdigrätter
     group: Färdigmat
     match:
@@ -571,7 +582,6 @@ categories:
       - pommes
       - potatisgratäng
       - wok
-
   - name: Deli & sallad
     group: Färdigmat
     match:
@@ -581,9 +591,6 @@ categories:
       - wrap
       - soppa
       - hummus
-
-  # --- Godis, snacks och dryck ---------------------------------------------
-
   - name: Glass
     group: Godis & snacks
     match:
@@ -591,7 +598,6 @@ categories:
       - isglass
       - gelato
       - sorbet
-
   - name: Godis
     group: Godis & snacks
     match:
@@ -603,7 +609,6 @@ categories:
       - kexchoklad
       - nougat
       - marabou
-
   - name: Chips & snacks
     group: Godis & snacks
     match:
@@ -614,44 +619,3 @@ categories:
       - saltstänger
       - nachos
       - snacks
-
-  - name: Kaffe & te
-    group: Dryck
-    match:
-      - kaffe
-      - bryggkaffe
-      - snabbkaffe
-      - espresso
-      - kapslar
-      - {re: "(^|\\s)te(\\s|$)"}   # bara ordet "te", inte varje ord som slutar på -te
-      - rooibos
-
-  - name: Läsk & vatten
-    group: Dryck
-    match:
-      - läsk
-      - cola
-      - fanta
-      - sprite
-      - mineralvatten
-      - vatten
-      - energidryck
-      - tonic
-
-  - name: Juice & saft
-    group: Dryck
-    match:
-      - juice
-      - saft
-      - smoothie
-      - nypon
-      - måltidsdryck
-
-  - name: Öl & cider
-    group: Dryck
-    match:
-      - {re: "(^|\\s)öl(\\s|$)"}   # inte "mjöl"
-      - lättöl
-      - folköl
-      - cider
-      - alkoholfri
