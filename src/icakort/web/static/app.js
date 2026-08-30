@@ -88,7 +88,9 @@
     $("kpi-total").textContent = Charts.formatKr(s.total_ore, 2);
     $("kpi-receipts").textContent = s.receipts.toLocaleString("sv-SE");
     $("kpi-avg").textContent = Charts.formatKr(s.avg_receipt_ore, 2);
-    $("kpi-coverage").textContent = percent(data.coverage.covered_share, 0);
+    $("kpi-coverage").textContent = data.coverage.covered_share === null
+      ? "–"
+      : percent(data.coverage.covered_share, 0);
     $("period").textContent = s.receipts
       ? s.first_date + " – " + s.last_date + " · " + s.items + " varurader"
       : "Inga kvitton matchar filtret.";
@@ -204,6 +206,13 @@
     var box = $("quality");
     box.replaceChildren();
     var share = data.coverage.covered_share;
+    if (share === null) {
+      // Inga varurader alls: säg det rakt ut i stället för att rita en tom mätare.
+      box.appendChild(text("p",
+        "Inga varurader har tolkats ur kvittona. Rådatan finns kvar — kör " +
+        "`icakort reparse` efter en rättad tolkning.", "note"));
+      return;
+    }
 
     box.appendChild(text("p", "Andel av varukronorna som fått en kategori:", "note"));
     var meter = document.createElement("div");
@@ -327,13 +336,16 @@
   function setButtonsBusy(busy) {
     $("btn-login").disabled = busy;
     $("btn-sync").disabled = busy;
+    $("btn-reparse").disabled = busy;
   }
 
   function renderJob(job) {
     var panel = $("job-panel");
     if (!job.kind) { panel.hidden = true; return; }
     panel.hidden = false;
-    $("job-title").textContent = job.kind === "login" ? "Loggar in och synkar" : "Synkar";
+    $("job-title").textContent = { login: "Loggar in och synkar",
+                                    sync: "Synkar",
+                                    reparse: "Tolkar om sparad rådata" }[job.kind] || "Jobb";
 
     var log = $("job-log");
     log.textContent = job.log.join("\n") || "Startar …";
@@ -351,8 +363,14 @@
     setButtonsBusy(!done);
 
     if (done && job.result) {
-      $("job-title").textContent = "Klart: " + job.result.fetched + " nya kvitton" +
-        (job.result.uncategorized ? " · " + job.result.uncategorized + " rader okategoriserade" : "");
+      var what = job.kind === "reparse"
+        ? job.result.reparsed + " kvitton omtolkade"
+        : job.result.fetched + " nya kvitton";
+      var warning = job.result.unparsed
+        ? " · VARNING: " + job.result.unparsed + " utan varurader"
+        : (job.result.uncategorized
+            ? " · " + job.result.uncategorized + " rader okategoriserade" : "");
+      $("job-title").textContent = "Klart: " + what + warning;
     }
     if (job.state === "error") $("job-title").textContent = "Jobbet misslyckades";
   }
@@ -464,6 +482,7 @@
     pollJob();
     $("btn-login").addEventListener("click", function () { startJob("/api/job/login"); });
     $("btn-sync").addEventListener("click", function () { startJob("/api/job/sync"); });
+    $("btn-reparse").addEventListener("click", function () { startJob("/api/job/reparse"); });
     $("job-dismiss").addEventListener("click", function () { $("job-panel").hidden = true; });
 
     var timer;

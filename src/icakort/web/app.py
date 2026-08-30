@@ -148,6 +148,33 @@ def _start(runner: jobs.JobRunner, kind: str, work) -> dict:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@app.post("/api/job/reparse")
+def api_reparse() -> dict:
+    """Tolka om all sparad rådata, utan att kontakta Kivra.
+
+    Vägen tillbaka när normaliseringen rättats: rådatan ligger kvar per
+    kvitto, så hela historiken kan byggas om utan ny BankID-signering.
+    """
+
+    def work(job: jobs.Job) -> dict:
+        jobs.log(job, "Tolkar om sparad rådata …")
+        conn = store.connect(same_thread=False)
+        try:
+            count, unparsed = sync_mod.reparse(
+                conn, progress=lambda message: jobs.log(job, message.strip())
+            )
+            counts = categorize_mod.recategorize(conn)
+        finally:
+            conn.close()
+        jobs.log(job, f"{count} kvitton omtolkade, {counts['total']} rader.")
+        if unparsed:
+            jobs.log(job, f"VARNING: {unparsed} kvitton gav inga varurader.")
+        return {"fetched": 0, "reparsed": count, "unparsed": unparsed,
+                "uncategorized": counts.get("fallback", 0)}
+
+    return _start(jobs.runner, "reparse", work)
+
+
 @app.get("/api/job")
 def api_job() -> dict:
     job = jobs.runner.current()

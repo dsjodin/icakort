@@ -81,9 +81,15 @@ def sync(
 def reparse() -> None:
     """Tolka om alla sparade råkvitton utan att kontakta Kivra."""
     conn = store.connect()
-    count = sync_mod.reparse(conn, progress=_echo)
+    count, unparsed = sync_mod.reparse(conn, progress=_echo)
     counts = categorize_mod.recategorize(conn)
     _echo(f"{count} kvitton omtolkade, {counts['total']} rader kategoriserade.")
+    if unparsed:
+        typer.secho(
+            f"{unparsed} kvitton gav inga varurader trots en totalsumma. "
+            "Kör `icakort verify` för att se vilka.",
+            fg=typer.colors.YELLOW,
+        )
 
 
 @app.command()
@@ -107,10 +113,13 @@ def categorize(
         f"{counts.get('override', 0)} via override, {counts.get('type', 0)} via radtyp, "
         f"{counts.get('fallback', 0)} okända."
     )
-    _echo(
-        f"Täckningsgrad: {cov['covered_share']:.1%} av varukronorna "
-        f"({kr(cov['unknown_ore'])} okategoriserat)."
-    )
+    if cov["covered_share"] is None:
+        typer.secho("Inga varurader att kategorisera.", fg=typer.colors.YELLOW)
+    else:
+        _echo(
+            f"Täckningsgrad: {cov['covered_share']:.1%} av varukronorna "
+            f"({kr(cov['unknown_ore'])} okategoriserat)."
+        )
 
     if unknown:
         rows = categorize_mod.unknown_items(conn, limit=limit)

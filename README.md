@@ -45,6 +45,8 @@ Allt sköts sedan i webbläsaren:
 2. **Sätt kategori** — i tabellen över okategoriserat längst ner väljer du
    kategori i en dropdown; siffrorna uppdateras direkt
 3. **Synka nu** — dyker upp så länge inloggningen lever
+4. **Tolka om** — bygger om hela historiken från sparad rådata, utan ny
+   BankID-signering. Behövs när normaliseringen ändrats
 
 Kivra ger ingen refresh-token, så du signerar med BankID varje gång den gått
 ut. Därför är inloggning och synk samma knapp: en signering, färsk data.
@@ -117,8 +119,14 @@ BankID → Kivra GraphQL → data/raw/{key}.json → SQLite → kategorisering �
 ```
 
 Rådatan sparas innan den tolkas. Därför kan normalisering och kategorisering
-göras om hur många gånger som helst (`icakort reparse`) utan att röra Kivras
-API igen.
+göras om hur många gånger som helst — **Tolka om** i webbappen eller
+`icakort reparse` — utan att röra Kivras API igen. Det är den egenskapen som
+gör en tolkningsbugg ofarlig: inget behöver hämtas en andra gång.
+
+Kivras schema är odokumenterat, så tolkningen litar inte på ett enda fält.
+Radtypen läses i tur och ordning ur `__typename`, fältet `type` och till sist
+radens form — och ett kvitto som ger noll varurader trots en totalsumma
+rapporteras högt i synkloggen i stället för att tyst bli noll kronor.
 
 Belopp lagras som **heltal ören** – flyttal ger drift i års- och
 kategorisummor. Rabatter och returer är negativa, vilket gör att `icakort

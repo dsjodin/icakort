@@ -49,6 +49,7 @@ query ReceiptDetails($key: String!) {
         allItems {
           text
           items {
+            __typename
             text
             type
             ... on ProductListItem {
@@ -81,6 +82,7 @@ query ReceiptDetails($key: String!) {
         noBonusItems {
           text
           items {
+            __typename
             type
             ... on ProductListItem {
               ...productFields
@@ -90,6 +92,7 @@ query ReceiptDetails($key: String!) {
         returnedItems {
           text
           items {
+            __typename
             type
             ... on ProductReturnListItem {
               name

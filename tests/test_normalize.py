@@ -93,3 +93,63 @@ def test_quantity_and_unit_price(raw_receipt):
     assert banan.quantity == 0.712
     assert banan.unit == "kg"
     assert banan.unit_price_ore == 2490
+
+
+# ---------------------------------------------------------------------------
+# Kivras faktiska form. Den första versionen krävde att allItems var en lista
+# och att fältet "type" innehöll GraphQL-typnamnen -- båda antagandena var
+# fel, och resultatet blev noll varurader på varje kvitto utan ett ljud.
+# ---------------------------------------------------------------------------
+
+
+def test_all_items_as_object_still_yields_rows(raw_receipt_object_shape):
+    receipt = normalize_receipt(
+        raw_receipt_object_shape["receipt"], raw_receipt_object_shape["list_entry"]
+    )
+    assert len(receipt.items) == 6
+    assert receipt.item_sum_ore == receipt.total_ore
+
+
+def test_rows_are_typed_from_shape_when_type_is_missing(raw_receipt_object_shape):
+    """Redan hämtad rådata saknar __typename -- formen måste räcka."""
+    receipt = normalize_receipt(
+        raw_receipt_object_shape["receipt"], raw_receipt_object_shape["list_entry"]
+    )
+    by_name = {item.name: item for item in receipt.items}
+
+    assert by_name["MJÖLK MELLAN 1,5% 1L"].item_type == "product"
+    assert by_name["Kuponger"].item_type == "discount"
+    assert by_name["KAFFE MELLANROST 450G"].discount_ore == -1000
+    assert by_name["COCA COLA 33CL 6-P"].deposit_ore == 600
+
+
+def test_typename_wins_over_an_unknown_type_value(raw_receipt):
+    """__typename är auktoritativt; ett okänt "type" får inte tysta raden."""
+    nodes = raw_receipt["receipt"]["content"]["items"]["allItems"][0]["items"]
+    for node in nodes:
+        node["type"] = "något_okänt_från_kivra"
+    nodes[0]["__typename"] = "ProductListItem"
+
+    receipt = normalize_receipt(raw_receipt["receipt"], raw_receipt["list_entry"])
+    assert len(receipt.items) == 6
+    assert receipt.items[0].item_type == "product"
+
+
+def test_a_receipt_without_rows_is_flagged(raw_receipt):
+    """Noll rader men en totalsumma ska aldrig gå tyst förbi igen."""
+    raw_receipt["receipt"]["content"]["items"] = {}
+    receipt = normalize_receipt(raw_receipt["receipt"], raw_receipt["list_entry"])
+
+    assert receipt.items == []
+    assert receipt.total_ore == 17943
+    assert receipt.looks_unparsed is True
+
+
+def test_a_genuinely_empty_receipt_is_not_flagged(raw_receipt):
+    raw_receipt["receipt"]["content"]["items"] = {}
+    raw_receipt["receipt"]["content"]["paymentInformation"] = {}
+    raw_receipt["receipt"]["content"]["header"]["totalPurchaseAmount"] = "0,00 kr"
+    raw_receipt["list_entry"]["totalAmount"] = {"formatted": "0,00 kr"}
+
+    receipt = normalize_receipt(raw_receipt["receipt"], raw_receipt["list_entry"])
+    assert receipt.looks_unparsed is False

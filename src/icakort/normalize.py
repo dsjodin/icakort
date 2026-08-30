@@ -141,14 +141,64 @@ class Receipt:
     def item_sum_ore(self) -> int:
         return sum(item.line_total_ore for item in self.items)
 
+    @property
+    def looks_unparsed(self) -> bool:
+        """Totalsumma men inga varurader -- tolkningen har missat något.
 
+        Kivras schema är odokumenterat och kan ändras. Ett kvitto utan rader
+        ska synas direkt i synkloggen i stället för att tyst bli noll kronor
+        i statistiken.
+        """
+        return not self.items and bool(self.total_ore)
+
+
+# Kivras typnamn, och de kortformer fältet "type" kan tänkas använda.
+# Nyckeln är gemener utan skiljetecken, så "ProductListItem", "product_list_item"
+# och "product" alla landar rätt.
 _TYPE_MAP = {
-    "ProductListItem": "product",
-    "ProductReturnListItem": "return",
-    "GeneralDepositListItem": "deposit",
-    "GeneralDiscountListItem": "discount",
-    "GeneralModifierListItem": "modifier",
+    "productlistitem": "product",
+    "product": "product",
+    "productreturnlistitem": "return",
+    "productreturn": "return",
+    "return": "return",
+    "generaldepositlistitem": "deposit",
+    "deposit": "deposit",
+    "generaldiscountlistitem": "discount",
+    "discount": "discount",
+    "generalmodifierlistitem": "modifier",
+    "modifier": "modifier",
 }
+
+
+def _normalize_type(value: object) -> str:
+    return re.sub(r"[^a-z]", "", str(value or "").lower())
+
+
+def _kind_from_shape(node: dict) -> str | None:
+    """Gissa radtypen ur dess form.
+
+    Behövs för kvitton som redan hämtats innan frågan bad om __typename --
+    de ligger kvar som rådata och ska gå att tolka om utan ny hämtning.
+    """
+    if node.get("quantityCost") is not None or node.get("name"):
+        return "return" if node.get("connectedReceipt") else "product"
+    if node.get("money") is None:
+        return None
+    # Pant har en beskrivning, rena rabatt- och avgiftsrader har det inte.
+    # Skillnaden mellan rabatt och avgift syns inte i formen, men båda är
+    # justeringar med samma tecken och summerar likadant.
+    return "deposit" if node.get("description") else "discount"
+
+
+def _row_kind(node: dict, in_returns: bool) -> str | None:
+    kind = _TYPE_MAP.get(_normalize_type(node.get("__typename")))
+    if kind is None:
+        kind = _TYPE_MAP.get(_normalize_type(node.get("type")))
+    if kind is None:
+        kind = _kind_from_shape(node)
+    if kind == "product" and in_returns:
+        return "return"
+    return kind
 
 
 def _sum_money_rows(rows: object) -> int:
@@ -204,9 +254,14 @@ def _item_from_node(node: dict, line_no: int, section: str, kind: str) -> Item |
 
 
 def _iter_sections(items_block: object, fallback_section: str):
-    if not isinstance(items_block, list):
-        return
-    for group in items_block:
+    """Gå igenom varuraderna i ett block.
+
+    Kivra levererar blocket som ett enda objekt ({text, items}), men vi tar
+    även emot en lista av sådana -- formen är odokumenterad och får inte
+    kunna tysta bort hela kvittot igen.
+    """
+    groups = items_block if isinstance(items_block, list) else [items_block]
+    for group in groups:
         if not isinstance(group, dict):
             continue
         section = str(group.get("text") or fallback_section)
@@ -262,11 +317,9 @@ def normalize_receipt(raw: dict, list_entry: dict | None = None) -> Receipt:
     )
     for block, fallback in sources:
         for section, node in _iter_sections(block, fallback):
-            kind = _TYPE_MAP.get(str(node.get("type") or node.get("__typename") or ""))
+            kind = _row_kind(node, in_returns=fallback == "Returer")
             if kind is None:
                 continue
-            if fallback == "Returer" and kind == "product":
-                kind = "return"
             item = _item_from_node(node, line_no, section, kind)
             if item is None:
                 continue

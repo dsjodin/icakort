@@ -22,12 +22,20 @@ class SyncResult:
     fetched: int = 0
     skipped: int = 0
     failed: int = 0
+    unparsed: int = 0
 
     def __str__(self) -> str:
-        return (
+        summary = (
             f"{self.listed} kvitton i listan, {self.fetched} hämtade, "
             f"{self.skipped} redan kända, {self.failed} misslyckades"
         )
+        if self.unparsed:
+            summary += (
+                f"\nVARNING: {self.unparsed} kvitton gav inga varurader trots en "
+                "totalsumma. Rådatan finns sparad -- kör `icakort verify` för att "
+                "se vilka."
+            )
+        return summary
 
 
 def _raw_path(key: str):
@@ -82,10 +90,15 @@ def sync(
         receipt = normalize_receipt(raw, entry)
         store.save_receipt(conn, receipt, raw_path=str(path))
         result.fetched += 1
+        if receipt.looks_unparsed:
+            result.unparsed += 1
         if progress:
+            marker = "!" if receipt.looks_unparsed else "+"
+            note = " INGA RADER TOLKADE" if receipt.looks_unparsed else ""
             progress(
-                f"  + {receipt.purchase_date} {receipt.store_name} "
-                f"{(receipt.total_ore or 0) / 100:.2f} kr ({len(receipt.items)} rader)"
+                f"  {marker} {receipt.purchase_date} {receipt.store_name} "
+                f"{(receipt.total_ore or 0) / 100:.2f} kr "
+                f"({len(receipt.items)} rader){note}"
             )
 
         if max_receipts and result.fetched >= max_receipts:
@@ -94,17 +107,27 @@ def sync(
     return result
 
 
-def reparse(conn: sqlite3.Connection, progress=None) -> int:
-    """Tolka om alla sparade råfiler. Används när normaliseringen ändrats."""
+def reparse(conn: sqlite3.Connection, progress=None) -> tuple[int, int]:
+    """Tolka om alla sparade råfiler utan att kontakta Kivra.
+
+    Det är den här vägen tillbaka som gör en tolkningsbugg ofarlig: rådatan
+    ligger kvar, så en rättad normalisering kan appliceras på hela historiken
+    utan ny BankID-signering.
+
+    Returnerar (antal kvitton, antal utan varurader).
+    """
     count = 0
+    unparsed = 0
     for path in sorted(config.raw_dir().glob("*.json")):
         payload = json.loads(path.read_text(encoding="utf-8"))
         receipt = normalize_receipt(payload["receipt"], payload.get("list_entry"))
         store.save_receipt(conn, receipt, raw_path=str(path))
         count += 1
-        if progress and count % 25 == 0:
-            progress(f"  ... {count} kvitton omtolkade")
-    return count
+        if receipt.looks_unparsed:
+            unparsed += 1
+        if progress and count % 50 == 0:
+            progress(f"  … {count} kvitton omtolkade")
+    return count, unparsed
 
 
 def verify(conn: sqlite3.Connection, tolerance_ore: int = 100) -> list[sqlite3.Row]:

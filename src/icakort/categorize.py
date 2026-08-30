@@ -170,5 +170,7 @@ def coverage(conn: sqlite3.Connection) -> dict[str, float | int]:
         "unknown_ore": unknown,
         "items": row["items"] or 0,
         "unknown_items": row["unknown_items"] or 0,
-        "covered_share": 1.0 if total == 0 else max(0.0, 1 - unknown / total),
+        # None, inte 1.0: "100 % kategoriserat" när det inte finns några rader
+        # är en osann uppgift som döljer att något är fel.
+        "covered_share": None if total == 0 else max(0.0, 1 - unknown / total),
     }

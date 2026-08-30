@@ -120,3 +120,37 @@ def test_non_ascii_credentials_are_rejected_not_crashed(client, monkeypatch):
 def test_non_ascii_password_still_works(client, monkeypatch):
     monkeypatch.setenv("ICAKORT_PASSWORD", "lösenord-åäö")
     assert client.get("/", auth=("icakort", "lösenord-åäö")).status_code == 200
+
+
+def test_reparse_rebuilds_from_saved_raw_data(client, tmp_path, raw_receipt_object_shape):
+    """Vägen tillbaka efter en tolkningsbugg: rådata in, rader ut, utan Kivra."""
+    import json
+    import time
+
+    raw = tmp_path / "raw"
+    raw.mkdir(exist_ok=True)
+    (raw / "rcpt-test-0001.json").write_text(
+        json.dumps(raw_receipt_object_shape, ensure_ascii=False), encoding="utf-8"
+    )
+
+    assert client.post("/api/job/reparse", json={}).status_code == 200
+    for _ in range(50):
+        job = client.get("/api/job").json()
+        if job["state"] != "running":
+            break
+        time.sleep(0.1)
+
+    assert job["state"] == "done", job.get("error")
+    assert job["result"]["reparsed"] == 1
+    assert job["result"]["unparsed"] == 0
+    assert client.get("/api/overview").json()["summary"]["items"] == 6
+
+
+def test_coverage_is_unknown_rather_than_a_perfect_score_when_empty(tmp_path, monkeypatch):
+    """"100 % kategoriserat" utan varurader döljer att något är trasigt."""
+    monkeypatch.setenv("ICAKORT_DATA_DIR", str(tmp_path))
+    from icakort import categorize
+
+    conn = store.connect(tmp_path / "empty.db")
+    assert categorize.coverage(conn)["covered_share"] is None
+    conn.close()
