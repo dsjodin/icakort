@@ -9,9 +9,32 @@
 </head>
 <body>
   <header class="page-head">
-    <h1>ICA-inköp</h1>
-    <p class="sub" id="period">Laddar…</p>
+    <div class="head-row">
+      <div>
+        <h1>ICA-inköp</h1>
+        <p class="sub" id="period">Laddar…</p>
+      </div>
+      <div class="session" role="group" aria-label="Kvittohämtning">
+        <span class="session-state" id="session-state">…</span>
+        <button type="button" id="btn-sync" hidden>Synka nu</button>
+        <button type="button" id="btn-login" class="primary">Logga in &amp; synka</button>
+      </div>
+    </div>
   </header>
+
+  <section class="card job-panel" id="job-panel" hidden aria-live="polite">
+    <div class="job-head">
+      <h2 id="job-title">Jobb</h2>
+      <button type="button" id="job-dismiss" hidden>Stäng</button>
+    </div>
+    <div class="job-body">
+      <figure class="qr" id="job-qr" hidden>
+        <img id="job-qr-img" alt="QR-kod att skanna med BankID-appen" width="220" height="220">
+        <figcaption>Skanna med BankID-appen. Koden uppdateras automatiskt.</figcaption>
+      </figure>
+      <pre class="job-log" id="job-log"></pre>
+    </div>
+  </section>
 
   <div class="filters" role="group" aria-label="Filter">
     <label>Från <input type="date" id="f-from"></label>

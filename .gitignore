@@ -1,5 +1,6 @@
 # Persondata: token, databas och råa kvitton får aldrig committas
 data/
+.env
 *.db
 *.sqlite3
 

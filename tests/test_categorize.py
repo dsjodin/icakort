@@ -1,11 +1,10 @@
-from pathlib import Path
-
 import pytest
 
-from icakort import categorize, store
+from icakort import categorize, config, store
 from icakort.normalize import normalize_receipt
 
-RULES = Path(__file__).resolve().parents[1] / "categories.yaml"
+# Reglerna som följer med i paketet -- det är dem användaren får vid första körningen.
+RULES = config.DEFAULT_CATEGORIES
 
 
 @pytest.fixture

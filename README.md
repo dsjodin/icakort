@@ -25,65 +25,89 @@ här verktyget kvittona därifrån.
    hamna i Kivra.
 3. Bara kvitton från aktiveringsdatum och framåt finns. Äldre inköp går inte
    att hämta i efterhand.
-4. Python 3.11 eller senare, och BankID på telefonen.
+4. Docker och Docker Compose, samt BankID på telefonen. (Utan container:
+   Python 3.11 eller senare.)
 
-## Installation
+## Snabbstart
+
+```bash
+cp .env.example .env      # sätt ICAKORT_PASSWORD
+docker compose up -d
+```
+
+Öppna `http://<servern>:8000` och logga in med användarnamnet och lösenordet
+från `.env`.
+
+Allt sköts sedan i webbläsaren:
+
+1. **Logga in & synka** — visar en BankID-QR att skanna, och hämtar kvittona
+   direkt efteråt
+2. **Sätt kategori** — i tabellen över okategoriserat längst ner väljer du
+   kategori i en dropdown; siffrorna uppdateras direkt
+3. **Synka nu** — dyker upp så länge inloggningen lever
+
+Kivra ger ingen refresh-token, så du signerar med BankID varje gång den gått
+ut. Därför är inloggning och synk samma knapp: en signering, färsk data.
+
+### Miljövariabler
+
+| Variabel | Default | Betyder |
+|---|---|---|
+| `ICAKORT_PASSWORD` | – | Lösenord till dashboarden. **Utan detta vägrar appen lyssna på annat än localhost** |
+| `ICAKORT_USER` | `icakort` | Användarnamn |
+| `ICAKORT_DATA_DIR` | `./data` | Token, databas, råa kvitton, regelfil |
+| `ICAKORT_HOST` / `ICAKORT_PORT` | `127.0.0.1` / `8000` | Lyssnaradress |
+| `ICAKORT_REQUEST_DELAY` | `0.3` | Paus mellan Kivra-anrop, sekunder |
+
+Volymen `icakort-data` håller allt som ska överleva en omstart. Dashboarden
+saknar TLS — på ett hemnät bakom brandvägg är HTTP Basic rimligt, men ska den
+någonsin nå internet hör den hemma bakom en proxy med certifikat.
+
+## Utan container
 
 ```bash
 uv venv .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
 source .venv/bin/activate
-```
-
-## Kom igång
-
-```bash
-icakort auth                  # BankID-QR i terminalen, skanna med appen
-icakort sync --max 5          # provkör mot fem kvitton först
-icakort verify                # stämmer varuraderna mot kvittototalerna?
-icakort sync                  # hämta resten
-icakort categorize --unknown  # se vad som saknar kategori, störst belopp först
-icakort serve                 # dashboard på http://127.0.0.1:8000
+icakort serve            # http://127.0.0.1:8000, inget lösenord behövs lokalt
 ```
 
 ## Kommandon
 
+Webbappen täcker det dagliga. CLI:t finns kvar för felsökning och
+engångskörningar — i containern via `docker compose exec icakort icakort …`.
+
 | Kommando | Gör |
 |---|---|
-| `icakort auth` | Loggar in med BankID och cachar token i `data/token.json` |
+| `icakort serve` | Startar webbappen |
+| `icakort auth` | Loggar in med BankID, QR som ASCII i terminalen |
 | `icakort sync` | Hämtar kvitton. `--max N`, `--refresh`, `--store TEXT` (default `ica`), `--all-stores` |
 | `icakort reparse` | Tolkar om sparade råkvitton utan att kontakta Kivra |
 | `icakort categorize` | Kör om kategoriseringen. `--unknown` listar okategoriserat |
 | `icakort set-category "VARA" Kategori` | Manuell override som alltid slår reglerna |
-| `icakort unset-category "VARA"` | Tar bort en override |
 | `icakort verify` | Stämmer av radsummor mot kvittototaler |
 | `icakort stats` | Sammanfattning i terminalen. `--from --to --store --category` |
-| `icakort serve` | Startar dashboarden |
 
 ## Kategorisering
 
-Reglerna ligger i [`categories.yaml`](categories.yaml). En regel är en
-delsträng eller ett reguljärt uttryck, och matchas mot ett normaliserat
-varunamn (gemener, utan mängd- och förpackningsangivelser, så
-`MJÖLK MELLAN 1,5% 1L` blir `mjölk mellan`). **Första träffen vinner**, så
-ordningen i filen är prioritetsordningen.
+Det vanliga sättet är dropdownen i webbappen — den sätter en override för just
+den varan.
 
-Arbetsflödet som faktiskt ger bra täckning:
+Vill du hellre skriva regler ligger `categories.yaml` i datakatalogen (i
+containern: volymen `icakort-data`), utlagd från paketets förlaga första
+gången appen startar. En regel är en delsträng eller ett reguljärt uttryck, och
+matchas mot ett normaliserat varunamn (gemener, utan mängdangivelser, så
+`MJÖLK MELLAN 1,5% 1L` blir `mjölk mellan`).
 
-```bash
-icakort categorize --unknown        # störst belopp först
-# lägg till regler i categories.yaml uppifrån
-icakort categorize                  # täckningsgraden stiger
-```
+En delsträng träffar vid en ordgräns i någon ände, så svenska sammansättningar
+fångas åt båda hållen: `mjölk` matchar `havremjölk` och `kyckling` matchar
+`kycklingfilé`, medan `ros` inte gör `kaffe mellanrost` till en blomma.
+**Första träffen vinner**, så ordningen i filen är prioritetsordningen — därför
+ligger Städ före Frukt & grönt, annars blir `DISKMEDEL CITRON` en citrusfrukt.
 
-För enstaka varor som inte förtjänar en regel:
-
-```bash
-icakort set-category "PRYLBURK XYZ" "Städ & hushåll"
-```
-
-Kategori är ett härlett fält som skrivs om vid varje körning, så nya regler
-slår igenom retroaktivt på hela historiken.
+Efter en ändring i filen: klicka **Kategorisera om**, eller kör
+`icakort categorize`. Kategori är ett härlett fält som skrivs om vid varje
+körning, så nya regler slår igenom retroaktivt på hela historiken.
 
 ## Så hänger det ihop
 
@@ -115,6 +139,7 @@ Testerna kör mot en fixtur och behöver varken nätverk eller BankID.
   ändras när som helst. All kunskap om det ligger i `src/icakort/kivra/`, så
   en ändring blir en lokal fix. Verktyget gör samma anrop som Kivras
   webbklient, mot din egen data, och pausar mellan anropen.
-- `data/` är gitignorad och innehåller token, databas och råa kvitton.
-  Committa den aldrig.
+- Datakatalogen (`data/` lokalt, volymen `icakort-data` i containern)
+  innehåller token, databas och råa kvitton. Den är gitignorad — committa den
+  aldrig. `.env` likaså.
 - Personnummer behövs inte – inloggningen sker med QR-kod.

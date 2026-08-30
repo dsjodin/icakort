@@ -203,13 +203,36 @@ def stats_command(
 
 @app.command()
 def serve(
-    host: str = typer.Option("127.0.0.1", "--host"),
-    port: int = typer.Option(8000, "--port"),
+    host: Optional[str] = typer.Option(None, "--host", help="Default: ICAKORT_HOST."),
+    port: Optional[int] = typer.Option(None, "--port", help="Default: ICAKORT_PORT."),
 ) -> None:
-    """Starta den lokala dashboarden."""
+    """Starta webbappen."""
     import uvicorn
 
-    _echo(f"Dashboard: http://{host}:{port}")
+    from .web.security import configured_password, configured_user, is_loopback
+
+    host = host or config.web_host()
+    port = port or config.web_port()
+
+    # Dashboarden visar hela köphistoriken. Att exponera den utan lösenord
+    # ska inte gå av misstag.
+    if not is_loopback(host) and configured_password() is None:
+        typer.secho(
+            f"Vägrar lyssna på {host} utan lösenord.\n"
+            "Sätt ICAKORT_PASSWORD, eller använd --host 127.0.0.1 för att bara "
+            "vara nåbar lokalt.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(2)
+
+    config.ensure_categories_file()
+    protection = (
+        f"lösenordsskyddad (användare: {configured_user()})"
+        if configured_password()
+        else "utan lösenord"
+    )
+    _echo(f"Dashboard: http://{host}:{port}  [{protection}]")
     uvicorn.run("icakort.web.app:app", host=host, port=port, log_level="warning")
 
 

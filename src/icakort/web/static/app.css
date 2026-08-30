@@ -203,3 +203,86 @@ tbody tr.is-active { background: var(--page); font-weight: 600; }
 
 .note { color: var(--text-secondary); }
 .empty { color: var(--text-muted); padding: 12px 0; }
+
+/* ---------- Statusrad och jobbpanel ---------- */
+
+.head-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+.session { display: flex; align-items: center; gap: 10px; }
+.session-state { font-size: 12px; color: var(--text-secondary); }
+.session-state.is-authenticated { color: var(--good); font-weight: 600; }
+
+.session button, .job-head button {
+  font: inherit;
+  padding: 8px 14px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+.session button:hover, .job-head button:hover { border-color: var(--baseline); }
+.session button.primary {
+  color: #fff;
+  background: var(--seq);
+  border-color: transparent;
+  font-weight: 600;
+}
+.session button:disabled { opacity: 0.5; cursor: default; }
+
+.job-panel { max-width: 1080px; margin: 0 auto 20px; }
+.job-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.job-body { display: flex; flex-wrap: wrap; gap: 24px; align-items: flex-start; margin-top: 12px; }
+
+.qr { margin: 0; text-align: center; flex: none; }
+/* Vit platta bakom koden: BankID-läsaren behöver mörkt på ljust även i mörkt läge. */
+.qr img {
+  display: block;
+  padding: 10px;
+  background: #fff;
+  border-radius: 8px;
+}
+.qr figcaption { margin-top: 8px; font-size: 12px; color: var(--text-secondary); max-width: 240px; }
+
+.job-log {
+  flex: 1 1 320px;
+  max-height: 260px;
+  margin: 0;
+  padding: 12px;
+  overflow-y: auto;
+  background: var(--page);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font: 12px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+.job-log.is-error { color: var(--negative); }
+
+.category-picker {
+  font: inherit;
+  font-size: 12px;
+  padding: 3px 6px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+button.rerun {
+  font: inherit;
+  margin-top: 12px;
+  padding: 7px 12px;
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+button.rerun:hover { border-color: var(--baseline); }
+button.rerun:disabled { opacity: 0.5; cursor: default; }

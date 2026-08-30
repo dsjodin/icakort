@@ -80,7 +80,7 @@ class Ruleset:
 
 
 def load_ruleset(path: Path | None = None) -> Ruleset:
-    path = path or config.categories_path()
+    path = path or config.ensure_categories_file()
     if not path.exists():
         raise RuleError(f"Hittar ingen regelfil: {path}")
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

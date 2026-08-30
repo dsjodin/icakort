@@ -65,7 +65,13 @@
     rows.forEach(function (row) {
       var tr = document.createElement("tr");
       columns.forEach(function (col) {
-        tr.appendChild(text("td", col.value(row), col.num ? "num" : ""));
+        if (col.cell) {
+          var td = document.createElement("td");
+          td.appendChild(col.cell(row));
+          tr.appendChild(td);
+        } else {
+          tr.appendChild(text("td", col.value(row), col.num ? "num" : ""));
+        }
       });
       if (onRow) onRow(tr, row);
       body.appendChild(tr);
@@ -212,14 +218,34 @@
       Charts.formatKr(data.coverage.unknown_ore, 2) + " okategoriserat på " +
       data.coverage.unknown_items + " rader", "note"));
 
+    // Regelfilen redigeras på värden (i containern: volymen). Knappen kör om
+    // kategoriseringen så ändringen slår igenom utan omstart.
+    var rerun = document.createElement("button");
+    rerun.type = "button";
+    rerun.textContent = "Kategorisera om";
+    rerun.className = "rerun";
+    rerun.addEventListener("click", function () {
+      rerun.disabled = true;
+      fetch("/api/categorize", { method: "POST" }).then(function (response) {
+        return response.json().then(function (data) {
+          if (!response.ok) throw new Error(data.detail || "kunde inte kategorisera om");
+          refresh();
+        });
+      }).catch(function (error) {
+        rerun.disabled = false;
+        window.alert(error.message);
+      });
+    });
+    box.appendChild(rerun);
+
     box.appendChild(text("h3", "Störst okategoriserat"));
     var unknown = document.createElement("div");
     box.appendChild(unknown);
     table(unknown, [
       { title: "Vara", value: function (r) { return r.example_name; } },
-      { title: "Nyckel", value: function (r) { return r.name_key; } },
       { title: "Gånger", num: true, value: function (r) { return String(r.times); } },
-      { title: "Totalt", num: true, value: function (r) { return Charts.formatKr(r.total_ore, 2); } }
+      { title: "Totalt", num: true, value: function (r) { return Charts.formatKr(r.total_ore, 2); } },
+      { title: "Sätt kategori", cell: categoryPicker }
     ], data.unknown);
 
     box.appendChild(text("h3", "Kvitton där raderna inte summerar till totalen"));
@@ -236,6 +262,112 @@
         { title: "Diff", num: true, value: function (r) { return Charts.formatKr(r.diff_ore, 2); } }
       ], data.mismatched);
     }
+  }
+
+  /* Kategoriväljaren gör `categorize --unknown`-arbetsflödet till en dropdown. */
+  function categoryPicker(row) {
+    var select = document.createElement("select");
+    select.className = "category-picker";
+    select.setAttribute("aria-label", "Kategori för " + row.example_name);
+    select.appendChild(new Option("Välj …", ""));
+    (latest.allCategories || []).forEach(function (name) {
+      select.appendChild(new Option(name, name));
+    });
+    select.addEventListener("change", function () {
+      if (!select.value) return;
+      select.disabled = true;
+      fetch("/api/overrides", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name_key: row.name_key, category: select.value })
+      }).then(function (response) {
+        if (!response.ok) throw new Error("kunde inte spara kategorin");
+        refresh();
+      }).catch(function (error) {
+        select.disabled = false;
+        window.alert(error.message);
+      });
+    });
+    return select;
+  }
+
+  /* ---------- Inloggning och synk ---------- */
+
+  var pollTimer = null;
+
+  function renderSession(data) {
+    var state = $("session-state");
+    state.classList.toggle("is-authenticated", data.authenticated);
+    state.textContent = data.authenticated ? "Inloggad hos Kivra" : "Inte inloggad";
+    $("btn-sync").hidden = !data.authenticated;
+  }
+
+  function loadSession() {
+    return fetch("/api/session").then(function (r) { return r.json(); }).then(renderSession);
+  }
+
+  function startJob(path) {
+    setButtonsBusy(true);
+    return fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ all_stores: false, max_receipts: 0 })
+    }).then(function (response) {
+      return response.json().then(function (data) {
+        if (!response.ok) throw new Error(data.detail || "kunde inte starta jobbet");
+        renderJob(data);
+        pollJob();
+      });
+    }).catch(function (error) {
+      setButtonsBusy(false);
+      window.alert(error.message);
+    });
+  }
+
+  function setButtonsBusy(busy) {
+    $("btn-login").disabled = busy;
+    $("btn-sync").disabled = busy;
+  }
+
+  function renderJob(job) {
+    var panel = $("job-panel");
+    if (!job.kind) { panel.hidden = true; return; }
+    panel.hidden = false;
+    $("job-title").textContent = job.kind === "login" ? "Loggar in och synkar" : "Synkar";
+
+    var log = $("job-log");
+    log.textContent = job.log.join("\n") || "Startar …";
+    log.classList.toggle("is-error", job.state === "error");
+    log.scrollTop = log.scrollHeight;
+
+    // Kivras QR roterar varje sekund; en gammal bildruta avvisas av BankID,
+    // så bilden byts vid varje poll.
+    var qr = $("job-qr");
+    qr.hidden = !job.has_qr;
+    if (job.has_qr) $("job-qr-img").src = "/api/job/qr.svg?t=" + Date.now();
+
+    var done = job.state !== "running";
+    $("job-dismiss").hidden = !done;
+    setButtonsBusy(!done);
+
+    if (done && job.result) {
+      $("job-title").textContent = "Klart: " + job.result.fetched + " nya kvitton" +
+        (job.result.uncategorized ? " · " + job.result.uncategorized + " rader okategoriserade" : "");
+    }
+    if (job.state === "error") $("job-title").textContent = "Jobbet misslyckades";
+  }
+
+  function pollJob() {
+    clearTimeout(pollTimer);
+    fetch("/api/job").then(function (r) { return r.json(); }).then(function (job) {
+      renderJob(job);
+      if (job.state === "running") {
+        pollTimer = setTimeout(pollJob, 1000);
+      } else if (job.kind) {
+        loadSession();
+        refresh();
+      }
+    });
   }
 
   /* ---------- Laddning ---------- */
@@ -303,6 +435,7 @@
       data.categories.forEach(function (name) {
         $("f-category").appendChild(new Option(name, name));
       });
+      latest.allCategories = data.all_categories || data.categories;
       refresh();
     });
 
@@ -326,6 +459,12 @@
         });
       });
     });
+
+    loadSession();
+    pollJob();
+    $("btn-login").addEventListener("click", function () { startJob("/api/job/login"); });
+    $("btn-sync").addEventListener("click", function () { startJob("/api/job/sync"); });
+    $("job-dismiss").addEventListener("click", function () { $("job-panel").hidden = true; });
 
     var timer;
     window.addEventListener("resize", function () {

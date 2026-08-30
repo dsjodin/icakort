@@ -1,0 +1,17 @@
+services:
+  icakort:
+    build: .
+    image: icakort:local
+    container_name: icakort
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # Nåbar från hemnätet. Byt till "127.0.0.1:8000:8000" för att bara
+      # vara nåbar på maskinen själv.
+      - "8000:8000"
+    volumes:
+      # Token, databas, råa kvitton och den redigerbara regelfilen.
+      - icakort-data:/data
+
+volumes:
+  icakort-data:
