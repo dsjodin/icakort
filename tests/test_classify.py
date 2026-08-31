@@ -171,3 +171,24 @@ def test_a_broken_response_is_reported_with_the_batch_number():
 
     with pytest.raises(classify.ClassifyError, match="sats 1"):
         classify.classify_names(["getost"], CATEGORIES, GROUPS, client=BrokenClient({}))
+
+
+def test_the_enum_offered_to_the_model_has_no_bookkeeping_categories():
+    """Regressionen: "Pant" låg först i enumet och blev modellens gissning
+    för varje varunamn den inte kände igen."""
+    from icakort import categorize, config
+
+    ruleset = categorize.load_ruleset(config.DEFAULT_CATEGORIES)
+    client = FakeClient({"lomo": "Chark & pålägg"})
+
+    classify.classify_names(
+        ["lomo"], ruleset.product_categories, {"Kött & fisk": ["Chark & pålägg"]},
+        client=client,
+    )
+
+    schema = client.calls[0]["output_config"]["format"]["schema"]
+    enum = schema["properties"]["assignments"]["items"]["properties"]["category"]["enum"]
+
+    forbidden = set(categorize.TYPE_CATEGORIES.values()) | {ruleset.fallback}
+    assert not (set(enum) & forbidden), sorted(set(enum) & forbidden)
+    assert classify.UNKNOWN in enum        # "vet ej" finns kvar

@@ -201,6 +201,26 @@ def assign_owner(conn: sqlite3.Connection, owner_key: str, owner_name: str) -> i
     conn.commit()
     return cursor.rowcount
 
+class CategoryNotAllowed(ValueError):
+    """Kategorin får inte sättas på en vara."""
+
+
+def _reject_bookkeeping(category: str) -> str:
+    """Pant, Rabatt och Avgifter sätts av radtypen, aldrig på en vara.
+
+    Enumet som skickas till modellen är en styrning, inte en garanti, och en
+    rullgardin kan alltid få ett nytt alternativ av misstag. Spärren här gör
+    att ett sådant fel inte kan nå databasen.
+    """
+    from .categorize import TYPE_CATEGORIES
+
+    if category in set(TYPE_CATEGORIES.values()):
+        raise CategoryNotAllowed(
+            f"{category!r} sätts av radtypen och kan inte väljas för en vara."
+        )
+    return category
+
+
 def reset_categorisation(conn: sqlite3.Connection) -> dict[str, int]:
     """Nollställ kategoriseringen inför en ny taxonomi.
 
@@ -226,7 +246,7 @@ def set_override(
             category = excluded.category,
             source   = excluded.source
         """,
-        (name_key, category, source),
+        (name_key, _reject_bookkeeping(category), source),
     )
     conn.commit()
 
@@ -237,6 +257,7 @@ def set_overrides_bulk(
     source: str = "manual",
 ) -> int:
     """Sätt samma kategori på många varor. En commit, inte en per vara."""
+    _reject_bookkeeping(category)
     rows = [(key, category, source) for key in name_keys if key]
     conn.executemany(
         """
@@ -255,7 +276,11 @@ def set_overrides_from_model(
     conn: sqlite3.Connection, assignments: dict[str, str]
 ) -> int:
     """Skriv modellens förslag. Märks som 'llm' så de går att granska samlat."""
-    rows = [(key, category, "llm") for key, category in assignments.items() if key and category]
+    rows = [
+        (key, _reject_bookkeeping(category), "llm")
+        for key, category in assignments.items()
+        if key and category
+    ]
     conn.executemany(
         """
         INSERT INTO overrides (name_key, category, source) VALUES (?, ?, ?)

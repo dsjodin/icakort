@@ -114,6 +114,19 @@ class Ruleset:
         return list(seen)
 
     @property
+    def product_categories(self) -> list[str]:
+        """Kategorier en *vara* kan tillhöra.
+
+        Pant, Rabatt och Avgifter sätts av radtypen och är bokföring, inte
+        varutyper. Erbjuds de som val -- för modellen eller i en rullgardin --
+        blir de förr eller senare valda: "Pant" ligger dessutom först i
+        listan och blir den naturliga gissningen för ett namn ingen känner
+        igen. Fallbacken hör inte hit heller; modellen har OKÄND för det, och
+        två sätt att säga "vet ej" gör svaret sämre.
+        """
+        return [rule.category for rule in self.rules if rule.group != TYPE_GROUP]
+
+    @property
     def groups(self) -> dict[str, str]:
         """Kategori -> grupp, inklusive de härledda och fallbacken."""
         mapping = {rule.category: rule.group for rule in self.rules}

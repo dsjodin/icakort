@@ -266,3 +266,52 @@ def test_releasing_claudes_answers_keeps_manual_fixes(tmp_path, raw_receipt):
     remaining = store.overrides(conn)
     assert remaining == {"banan eko": ("Godis", "manual")}
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# Bokföringskategorier ska aldrig kunna sättas på en vara
+#
+# Pant, Rabatt och Avgifter sätts av radtypen. De skickades ändå med i enumet
+# till Claude -- med "Pant" först i listan -- och blev därför modellens
+# gissning för varje namn den inte kände igen.
+# ---------------------------------------------------------------------------
+
+
+def test_product_categories_exclude_bookkeeping(ruleset):
+    """Det test som hade fångat att Claude erbjöds "Pant" för en vara."""
+    offered = set(ruleset.product_categories)
+    forbidden = set(categorize.TYPE_CATEGORIES.values()) | {ruleset.fallback}
+
+    assert not (offered & forbidden), sorted(offered & forbidden)
+    # ... men alla riktiga varukategorier finns kvar.
+    assert {"Bröd", "Kött", "Läsk & vatten", "Ost", "Glass"} <= offered
+
+
+def test_the_full_list_still_contains_bookkeeping(ruleset):
+    """Kategorifiltret ska fortfarande kunna visa Pant -- den finns i datan.
+    Spärren gäller att *sätta* dem, inte att visa dem."""
+    assert "Pant" in ruleset.category_names
+    assert "Rabatt" in ruleset.category_names
+
+
+@pytest.mark.parametrize("category", ["Pant", "Rabatt", "Avgifter & justeringar"])
+def test_the_write_path_rejects_bookkeeping(tmp_path, category):
+    """Enumet är en styrning, inte en garanti."""
+    conn = store.connect(tmp_path / "test.db")
+
+    with pytest.raises(store.CategoryNotAllowed, match=category):
+        store.set_override(conn, "lomo", category)
+    with pytest.raises(store.CategoryNotAllowed):
+        store.set_overrides_bulk(conn, ["lomo", "flapsteak"], category)
+    with pytest.raises(store.CategoryNotAllowed):
+        store.set_overrides_from_model(conn, {"lomo": category})
+
+    assert store.overrides(conn) == {}
+    conn.close()
+
+
+def test_a_real_category_still_goes_through(tmp_path):
+    conn = store.connect(tmp_path / "test.db")
+    store.set_override(conn, "lomo", "Chark & pålägg")
+    assert store.overrides(conn) == {"lomo": ("Chark & pålägg", "manual")}
+    conn.close()

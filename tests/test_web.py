@@ -128,3 +128,20 @@ def test_an_older_categories_file_is_upgraded_but_kept(tmp_path, monkeypatch):
     assert (tmp_path / "categories.v1.bak").read_text(encoding="utf-8") == (
         "fallback: Eget\ncategories: []\n"                            # gamla kvar
     )
+
+
+def test_releasing_model_overrides_has_its_own_path(client):
+    """En literal under /api/overrides/ skuggas av {name_key}-rutten.
+
+    Med den gamla sökvägen raderades i stället en override som hette "llm",
+    och svaret såg lyckat ut fast ingenting hänt.
+    """
+    conn = store.connect()
+    store.set_overrides_from_model(conn, {"prylburk xyz": "Kryddor"})
+    conn.close()
+
+    response = client.delete("/api/model-overrides")
+    assert response.status_code == 200
+    assert response.json()["removed"] == 1
+
+    assert client.get("/api/quality").json()["coverage"]["unknown_ore"] == 2500

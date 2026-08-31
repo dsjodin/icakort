@@ -326,7 +326,14 @@ def test_releasing_claudes_answers_leaves_manual_fixes(page, server):
     before = page.request.get(f"{server}/api/review", params={"source": "manual"}).json()
     assert before["total"] >= 1
 
-    page.request.delete(f"{server}/api/overrides/llm")
+    # Sätt något som modellen "satt", så testet inte passerar genom att
+    # ingenting raderas -- vilket det gjorde när rutten var skuggad.
+    page.request.post(
+        f"{server}/api/overrides", data={"name_key": "kaffe", "category": "Glass"}
+    )
+    released = page.request.delete(f"{server}/api/model-overrides")
+    assert released.ok
+    assert "removed" in released.json()
 
     after = page.request.get(f"{server}/api/review", params={"source": "manual"}).json()
     assert after["total"] == before["total"]

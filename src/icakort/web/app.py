@@ -207,13 +207,17 @@ def api_classify() -> dict:
                 return {"assigned": 0, "unknown": 0}
 
             jobs.log(job, f"{len(unknown)} varunamn att fråga om …")
+            # Taxonomitexten i prompten måste spegla enumet. Listas Pant där
+            # kvarstår nudgen mot den även om enumet utesluter den.
+            allowed = set(ruleset.product_categories)
             grouped: dict[str, list[str]] = {}
             for rule in ruleset.rules:
-                grouped.setdefault(rule.group, []).append(rule.category)
+                if rule.category in allowed:
+                    grouped.setdefault(rule.group, []).append(rule.category)
 
             result = classify.classify_names(
                 unknown,
-                ruleset.category_names,
+                ruleset.product_categories,
                 grouped,
                 progress=lambda message: jobs.log(job, message),
             )
@@ -291,7 +295,10 @@ def api_set_override(
     request: OverrideRequest, conn: sqlite3.Connection = Depends(get_conn)
 ) -> dict:
     key = make_name_key(request.name_key) or request.name_key
-    store.set_override(conn, key, request.category)
+    try:
+        store.set_override(conn, key, request.category)
+    except store.CategoryNotAllowed as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     counts = categorize_mod.recategorize(conn)
     return {"name_key": key, "category": request.category, "counts": counts}
 
@@ -308,7 +315,10 @@ def api_bulk_overrides(
 ) -> dict:
     """Sätt kategori på många varor i ett svep."""
     keys = [make_name_key(key) or key for key in request.name_keys]
-    changed = store.set_overrides_bulk(conn, keys, request.category)
+    try:
+        changed = store.set_overrides_bulk(conn, keys, request.category)
+    except store.CategoryNotAllowed as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     counts = categorize_mod.recategorize(conn)
     return {"changed": changed, "category": request.category, "counts": counts}
 
@@ -339,7 +349,7 @@ def api_review(
 ) -> dict:
     """Alla varunamn med kategori och källa -- även de som redan har en."""
     try:
-        categories = categorize_mod.load_ruleset().category_names
+        categories = categorize_mod.load_ruleset().product_categories
     except categorize_mod.RuleError:
         categories = stats.categories(conn)
     return {
@@ -349,9 +359,15 @@ def api_review(
     }
 
 
-@app.delete("/api/overrides/llm")
+@app.delete("/api/model-overrides")
 def api_clear_model_overrides(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
-    """Släpp Claudes svar så rättade regler får gälla igen."""
+    """Släpp Claudes svar så rättade regler får gälla igen.
+
+    Egen sökväg, inte /api/overrides/llm: den parametriserade rutten
+    /api/overrides/{name_key} skuggar varje literal under samma prefix, och
+    då raderades i stället en override med namnet "llm" -- tyst, med
+    lyckat svar.
+    """
     removed = store.clear_model_overrides(conn)
     return {"removed": removed, "counts": categorize_mod.recategorize(conn)}
 
@@ -398,7 +414,9 @@ def api_filters(conn: sqlite3.Connection = Depends(get_conn)) -> dict:
     lo, hi = stats.date_bounds(conn)
     try:
         ruleset = categorize_mod.load_ruleset()
-        available = ruleset.category_names
+        # Rullgardinerna ska bara erbjuda varukategorier. Kategorifiltret
+        # nedan visar fortfarande allt som förekommer i datan, Pant inräknat.
+        available = ruleset.product_categories
         available_groups = ruleset.group_names
     except categorize_mod.RuleError:
         available = stats.categories(conn)

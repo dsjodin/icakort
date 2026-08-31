@@ -38,6 +38,11 @@
         <button type="button" id="clear-llm">Släpp Claudes svar</button>
       </div>
 
+      <p class="note">
+        <strong>Släpp Claudes svar</strong> tömmer bara det modellen satt, inte
+        dina egna rättningar. Det är också vägen tillbaka när modellen fått fel
+        förutsättningar — kör den och sedan Kategorisera om.
+      </p>
       <p class="note" id="count"></p>
       <div id="table"></div>
     </section>
@@ -138,7 +143,7 @@
       if (!window.confirm(
             "Släpper Claudes kategorier så att rättade regler får gälla igen. " +
             "Dina egna rättningar rörs inte.")) return;
-      fetch("/api/overrides/llm", { method: "DELETE" })
+      fetch("/api/model-overrides", { method: "DELETE" })
         .then(function (r) { return r.json(); })
         .then(function (data) {
           window.alert(data.removed + " modellsatta kategorier släppta.");
