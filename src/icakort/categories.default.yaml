@@ -34,7 +34,7 @@
 # Arbetsflöde: kör `icakort categorize --unknown`, eller använd
 # bulkverktyget och Claude-förslagen i webbappen.
 
-version: 3
+version: 4
 fallback: Okategoriserat
 
 categories:
@@ -215,6 +215,10 @@ categories:
       - vatten
       - energidryck
       - tonic
+      - julmust
+      - påskmust
+      - champis
+      - sockerdricka
   - name: Juice & saft
     group: Dryck
     match:
@@ -326,6 +330,13 @@ categories:
       - ädelost
       - brie
       - halloumi
+      # Kontinentala ostar bär inte ordet "ost" i namnet.
+      - parmigiano
+      - reggiano
+      - pecorino
+      - manchego
+      - gorgonzola
+      - taleggio
   - name: Mjölk & fil
     group: Mejeri & ägg
     match:
@@ -390,6 +401,16 @@ categories:
       - högrev
       - oxfilé
       - fläskfilé
+      # Styckdetaljer som inte heter något på svenska.
+      - flapstek
+      - flapsteak
+      - flankstek
+      - flanksteak
+      - picanha
+      - secreto
+      - presa
+      - pluma
+      - bavette
   - name: Chark & pålägg
     group: Kött & fisk
     match:
@@ -403,6 +424,22 @@ categories:
       - falukorv
       - medwurst
       - rökt
+      # Lufttorkat och italienskt/spanskt: inget av namnen innehåller
+      # "korv" eller "skinka", och de är dyra nog att synas i statistiken.
+      - prosciutto
+      - serrano
+      - iberico
+      - ibérico
+      - bellota
+      - chorizo
+      - spianata
+      - salsiccia
+      - coppa
+      - pancetta
+      - bresaola
+      - mortadella
+      - lomo
+      - grymming
   - name: Fisk & skaldjur
     group: Kött & fisk
     match:
@@ -444,6 +481,16 @@ categories:
       - pitabröd
       - rågkaka
       - tunnbröd
+      - jättefranska
+      - franskbröd
+      - fralla
+      - frallor
+      - ciabatta
+      - focaccia
+      - brioche
+      - naan
+      # "bun" bara som eget ord: "burger bun", inte "bunke".
+      - {re: "(^|\\s)buns?(\\s|$)"}
   - name: Fikabröd & kakor
     group: Bröd & bageri
     match:

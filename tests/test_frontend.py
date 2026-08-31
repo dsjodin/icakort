@@ -337,3 +337,59 @@ def test_releasing_claudes_answers_leaves_manual_fixes(page, server):
 
     after = page.request.get(f"{server}/api/review", params={"source": "manual"}).json()
     assert after["total"] == before["total"]
+
+
+# ---------------------------------------------------------------------------
+# Rullgardinen måste visa även ett värde som inte går att välja
+#
+# "Okategoriserat" finns medvetet inte bland valen. Utan platshållare visar
+# webbläsaren första alternativet i stället, så raden ser ut att ha en
+# kategori den inte har -- först "Pant", sedan "Städ & rengöring".
+# ---------------------------------------------------------------------------
+
+
+def test_an_uncategorised_item_is_not_shown_as_the_first_category(page, server):
+    page.request.delete(f"{server}/api/overrides/ok%C3%A4ndvara")
+    page.goto(f"{server}/granska", wait_until="networkidle")
+    page.wait_for_timeout(800)
+
+    picker = _review_row(page, "Okändvara").locator("select")
+    assert picker.input_value() == ""                       # platshållaren, inget val
+    assert picker.locator("option:checked").inner_text() == "Okategoriserat"
+
+    choices = page.eval_on_selector_all(
+        "#table tbody tr:first-child select option",
+        "els => els.map(e => e.value).filter(Boolean)",
+    )
+    assert "Okategoriserat" not in choices                  # går inte att välja
+    assert picker.locator("option:checked").inner_text() != choices[0]
+
+
+def test_the_items_table_shows_uncategorised_correctly_too(page, server):
+    page.request.delete(f"{server}/api/overrides/ok%C3%A4ndvara")
+    page.goto(server, wait_until="networkidle")
+    page.wait_for_timeout(1200)
+
+    names = page.eval_on_selector_all(
+        "#table-items tbody tr td:first-child", "els => els.map(e => e.textContent)"
+    )
+    row = page.locator("#table-items tbody tr").nth(names.index("Okändvara"))
+    assert row.locator("select option:checked").inner_text() == "Okategoriserat"
+
+
+def test_a_manual_fix_can_be_undone(page, server):
+    """Utan vägen tillbaka blir en felaktig rättning permanent."""
+    page.request.post(
+        f"{server}/api/overrides", data={"name_key": "okändvara", "category": "Glass"}
+    )
+    page.goto(f"{server}/granska", wait_until="networkidle")
+    page.wait_for_timeout(800)
+
+    picker = _review_row(page, "Okändvara").locator("select")
+    assert picker.input_value() == "Glass"
+
+    picker.select_option(label="— låt reglerna bestämma —")
+    page.wait_for_timeout(1500)
+
+    review = page.request.get(f"{server}/api/review", params={"search": "okänd"}).json()
+    assert review["items"][0]["source"] == "fallback"

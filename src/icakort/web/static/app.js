@@ -4,6 +4,7 @@
 
   var MONTHS = ["jan", "feb", "mar", "apr", "maj", "jun",
                 "jul", "aug", "sep", "okt", "nov", "dec"];
+  var CLEAR_OVERRIDE = "\u0000clear";   // eget värde, kan inte krocka med ett kategorinamn
   var STACK_SLOTS = 6;   // fem kategorier + "Övrigt" - taket för en läsbar stapel
 
   var state = { from: "", to: "", store: "", category: "", group: "",
@@ -312,16 +313,41 @@
   /* Kategoriväljaren gör `categorize --unknown`-arbetsflödet till en dropdown.
      Med `current` satt fungerar den även som rättning av en befintlig kategori. */
   function categoryPicker(row, current) {
+    var choices = latest.allCategories || [];
+    var settable = choices.indexOf(current) !== -1;
     var select = document.createElement("select");
     select.className = "category-picker";
     select.setAttribute("aria-label", "Kategori för " + (row.example_name || row.name));
-    if (!current) select.appendChild(new Option("Välj …", ""));
-    (latest.allCategories || []).forEach(function (name) {
-      select.appendChild(new Option(name, name, false, name === current));
+
+    // Nuvarande värde behöver inte gå att välja -- "Okategoriserat" finns
+    // medvetet inte bland valen. Utan en platshållare för det visar
+    // webbläsaren första alternativet i stället, så raden ser ut att ha en
+    // kategori den inte har. Det är svårt att upptäcka och lätt att tro på.
+    if (!settable) {
+      var placeholder = new Option(current || "Välj …", "");
+      placeholder.disabled = true;
+      select.appendChild(placeholder);
+    }
+    choices.forEach(function (name) {
+      select.appendChild(new Option(name, name));
     });
+    if (settable) {
+      // Vägen tillbaka: utan den blir en felaktig rättning permanent.
+      select.appendChild(new Option("— låt reglerna bestämma —", CLEAR_OVERRIDE));
+    }
+
+    // Sätt värdet efter att alternativen finns. new Option(..., selected)
+    // förutsätter att värdet är ett av dem.
+    select.value = settable ? current : "";
+
     select.addEventListener("change", function () {
       if (!select.value) return;
       select.disabled = true;
+      if (select.value === CLEAR_OVERRIDE) {
+        fetch("/api/overrides/" + encodeURIComponent(row.name_key), { method: "DELETE" })
+          .then(function () { refresh(); });
+        return;
+      }
       fetch("/api/overrides", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

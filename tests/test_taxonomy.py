@@ -315,3 +315,47 @@ def test_a_real_category_still_goes_through(tmp_path):
     store.set_override(conn, "lomo", "Chark & pålägg")
     assert store.overrides(conn) == {"lomo": ("Chark & pålägg", "manual")}
     conn.close()
+
+
+# De namn som hamnade under "Pant" när modellen fick fel enum. Ingen regel
+# kände igen något av dem -- därför gick de till modellen över huvud taget.
+# Nu placerar reglerna dem, så modellen aldrig behöver gissa på dem igen.
+KNOWN_BY_NAME = [
+    ("Parmigiano Reggian", "Ost"),
+    ("PROSCIUTTO CRUDO", "Chark & pålägg"),
+    ("Iberico Bellota", "Chark & pålägg"),
+    ("Spianata Calabrese", "Chark & pålägg"),
+    ("Lomo", "Chark & pålägg"),
+    ("Grymming", "Chark & pålägg"),
+    ("Secreto", "Kött"),
+    ("Flapsteak", "Kött"),
+    ("flapstek", "Kött"),
+    ("Potato Burger bun", "Bröd"),
+    ("JätteFranska", "Bröd"),
+    ("Julmust", "Läsk & vatten"),
+]
+
+
+@pytest.mark.parametrize("name,expected", KNOWN_BY_NAME)
+def test_foreign_product_names_are_placed_by_rule(ruleset, name, expected):
+    from icakort.normalize import name_key
+
+    assert ruleset.classify(name_key(name), "item") == (expected, "rule")
+
+
+# Orden ovan är korta och främmande, och sådana river lätt med sig annat.
+NOT_MOVED_BY_THE_NEW_RULES = [
+    ("franska bönor", "Bröd"),        # "franska" ensamt duger inte som brödregel
+    ("bunke", "Bröd"),                # "bun" bara som eget ord
+    ("kaffe mellanrost", "Ost"),
+    ("korvbröd", "Chark & pålägg"),
+    ("LOKA CITRON", "Frukt"),
+]
+
+
+@pytest.mark.parametrize("name,wrong", NOT_MOVED_BY_THE_NEW_RULES)
+def test_the_new_rules_do_not_swallow_their_neighbours(ruleset, name, wrong):
+    from icakort.normalize import name_key
+
+    category, _ = ruleset.classify(name_key(name), "item")
+    assert category != wrong

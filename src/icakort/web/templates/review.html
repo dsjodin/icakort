@@ -58,6 +58,7 @@
       fallback: "Okategoriserat", type: "Radtyp"
     };
     var categories = [];
+    var CLEAR = "\u0000clear";   // eget värde, kan inte krocka med ett kategorinamn
 
     function text(tag, value, className) {
       var node = document.createElement(tag);
@@ -111,11 +112,33 @@
         var picker = document.createElement("select");
         picker.className = "category-picker";
         picker.setAttribute("aria-label", "Kategori för " + row.name);
+
+        // "Okategoriserat" och "Pant" går medvetet inte att välja. Utan en
+        // platshållare visar webbläsaren första alternativet, och raden ser
+        // ut att ha en kategori den inte har.
+        var settable = categories.indexOf(row.category) !== -1;
+        if (!settable) {
+          var placeholder = new Option(row.category, "");
+          placeholder.disabled = true;
+          picker.appendChild(placeholder);
+        }
         categories.forEach(function (name) {
-          picker.appendChild(new Option(name, name, false, name === row.category));
+          picker.appendChild(new Option(name, name));
         });
+        if (settable) picker.appendChild(new Option("— låt reglerna bestämma —", CLEAR));
+
+        // Efter att alternativen finns -- new Option(..., selected)
+        // förutsätter att värdet är ett av dem.
+        picker.value = settable ? row.category : "";
+
         picker.addEventListener("change", function () {
+          if (!picker.value) return;
           picker.disabled = true;
+          if (picker.value === CLEAR) {
+            fetch("/api/overrides/" + encodeURIComponent(row.name_key),
+                  { method: "DELETE" }).then(load);
+            return;
+          }
           fetch("/api/overrides", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
